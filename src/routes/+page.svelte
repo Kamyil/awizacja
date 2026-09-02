@@ -11,6 +11,8 @@
   type SupplierSlot = { key:string; d:string; n:string; m:string; dateLabel:string; time:string; dock:string; start:number; day:number };
 
   let view: View = $state('terminarz');
+  let role = $state<'admin'|'supplier'>('admin');
+  let userMenuOpen = $state(false);
   let period = $state<'Dzień'|'Tydzień'|'Miesiąc'>('Tydzień');
   let dockFilter = $state('Wszystkie doki');
   let query = $state('');
@@ -209,9 +211,23 @@
     <nav aria-label="Główna nawigacja">
       <button class:active={view==='terminarz'} onclick={() => view='terminarz'}><CalendarDays size={17}/>Terminarz</button>
       <button class:active={view==='dostawca'} onclick={() => view='dostawca'}><Truck size={17}/>Panel dostawcy</button>
-      <button class:active={view==='konfiguracja'} onclick={() => view='konfiguracja'}><Settings2 size={17}/>Konfiguracja</button>
+      {#if role === 'admin'}<button class:active={view==='konfiguracja'} onclick={() => view='konfiguracja'}><Settings2 size={17}/>Konfiguracja</button>{/if}
     </nav>
-    <div class="top-actions"><button class="icon-button" aria-label="Powiadomienia"><Bell size={18}/><span class="notification"></span></button><div class="avatar">KM</div><div class="user"><strong>Kamil Michalski</strong><span>Koordynator magazynu</span></div><ChevronRight size={16} class="muted"/></div>
+    <div class="top-actions">
+      <button class="icon-button" aria-label="Powiadomienia"><Bell size={18}/><span class="notification"></span></button>
+      <button class="account-switcher" onclick={() => userMenuOpen=!userMenuOpen} aria-expanded={userMenuOpen}>
+        <span class="avatar">{role === 'admin' ? 'KM' : 'NS'}</span>
+        <span class="user"><strong>{role === 'admin' ? 'Kamil Michalski' : 'NordSteel Sp. z o.o.'}</strong><span>{role === 'admin' ? 'Administrator' : 'Dostawca'}</span></span>
+        <ChevronRight size={16} class={userMenuOpen ? 'user-chevron-open' : ''}/>
+      </button>
+      {#if userMenuOpen}
+        <div class="user-menu">
+          <span class="eyebrow">PRZEŁĄCZ UŻYTKOWNIKA</span>
+          <button class:active={role==='admin'} onclick={() => {role='admin';view='terminarz';userMenuOpen=false}}><span class="avatar">KM</span><span><strong>Admin</strong><small>Pełny dostęp</small></span>{#if role==='admin'}<Check size={15}/>{/if}</button>
+          <button class:active={role==='supplier'} onclick={() => {role='supplier';view='dostawca';userMenuOpen=false}}><span class="avatar">NS</span><span><strong>Dostawca</strong><small>Terminarz i panel dostawcy</small></span>{#if role==='supplier'}<Check size={15}/>{/if}</button>
+        </div>
+      {/if}
+    </div>
   </header>
 
   {#if view === 'terminarz'}
@@ -240,9 +256,21 @@
       <section class="calendar-panel">
         <div class="calendar-toolbar">
           <div><span class="eyebrow">TERMINARZ DOSTAW</span><h1>28 kwietnia – 2 maja 2025</h1></div>
-          <div class="toolbar-actions"><div class="segmented">{#each ['Dzień','Tydzień','Miesiąc'] as p}<button class:active={period===p} onclick={() => period=p as typeof period}>{p}</button>{/each}</div><Button variant="outline" size="sm"><Dock size={15}/>{dockFilter}</Button><Button size="sm" onclick={() => addOpen=true}><Plus size={16}/>Nowa awizacja</Button></div>
+          <div class="toolbar-actions">
+            <div class="segmented">{#each ['Dzień','Tydzień','Miesiąc'] as p}<button class:active={period===p} onclick={() => period=p as typeof period}>{p}</button>{/each}</div>
+            <Button variant="outline" size="sm"><Dock size={15}/>{dockFilter}</Button>
+            {#if role === 'admin'}<Button size="sm" onclick={() => addOpen=true}><Plus size={16}/>Nowa awizacja</Button>{/if}
+          </div>
         </div>
-        <div class="date-nav"><div class="arrows"><button aria-label="Poprzedni tydzień"><ChevronLeft size={17}/></button><button aria-label="Następny tydzień"><ChevronRight size={17}/></button></div><button class="today">Dzisiaj</button><div class="legend">{#each Object.entries(statusColors) as [status,color]}<span><i class={color}></i>{status}</span>{/each}</div></div>
+        <div class="date-nav">
+          <div class="arrows"><button aria-label="Poprzedni tydzień"><ChevronLeft size={17}/></button><button aria-label="Następny tydzień"><ChevronRight size={17}/></button></div>
+          <button class="today">Dzisiaj</button>
+          {#if role === 'admin'}
+            <div class="legend">{#each Object.entries(statusColors) as [status,color]}<span><i class={color}></i>{status}</span>{/each}</div>
+          {:else}
+            <div class="privacy-mode"><ShieldAlert size={14}/>Tryb prywatny: szczegóły dostaw są ukryte</div>
+          {/if}
+        </div>
 
         <div class="calendar-wrap">
           {#if period === 'Tydzień'}
@@ -254,9 +282,13 @@
                 {#each days as day, dayIndex}
                   <div role="gridcell" tabindex="0" aria-label={`Wolny termin ${day.date}, ${formatTime(hour)}`} class:closed={dayIndex===3} class="time-cell" ondragover={(e)=>e.preventDefault()} ondrop={(e)=>dropDelivery(e,dayIndex,hour)}>
                     {#each deliveries.filter(d => d.day===dayIndex && d.start===hour) as item}
-                      <button class="event {item.color}" class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => {selected=item;resolvingConflict=false}}>
-                        <span class="event-time">{formatTime(item.start??hour)} · {item.dock}</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.conflictWith ? `Koliduje z ${item.conflictWith}` : item.plate || 'Brak rejestracji'}</small>{#if item.status==='Konflikt'}<CircleAlert size={14} class="alert-icon"/>{/if}
-                      </button>
+                      {#if role === 'admin'}
+                        <button class="event {item.color}" class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => {selected=item;resolvingConflict=false}}>
+                          <span class="event-time">{formatTime(item.start??hour)} · {item.dock}</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.conflictWith ? `Koliduje z ${item.conflictWith}` : item.plate || 'Brak rejestracji'}</small>{#if item.status==='Konflikt'}<CircleAlert size={14} class="alert-icon"/>{/if}
+                        </button>
+                      {:else}
+                        <div class="event private-event" class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} aria-label="Termin zajęty"><span class="event-time">{formatTime(item.start??hour)}</span><strong>Termin zajęty</strong><span>Szczegóły ukryte</span></div>
+                      {/if}
                     {/each}
                   </div>
                 {/each}
@@ -271,9 +303,13 @@
                 {#each docks as dock, dockIndex}
                   <div role="gridcell" tabindex="0" aria-label={`${dock}, ${formatTime(hour)}`} class:closed={!dockEnabled[dockIndex]} class="time-cell" ondragover={(e)=>e.preventDefault()} ondrop={(e)=>dropDelivery(e,0,hour)}>
                     {#each deliveries.filter(d => d.day===0 && d.dock===dock && d.start===hour) as item}
-                      <button class="event {item.color}" style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => {selected=item;resolvingConflict=false}}>
-                        <span class="event-time">{formatTime(item.start??hour)} · {item.duration} h</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.plate}</small>
-                      </button>
+                      {#if role === 'admin'}
+                        <button class="event {item.color}" style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => {selected=item;resolvingConflict=false}}>
+                          <span class="event-time">{formatTime(item.start??hour)} · {item.duration} h</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.plate}</small>
+                        </button>
+                      {:else}
+                        <div class="event private-event" style={`height:${Math.max(30,item.duration*68-4)}px`} aria-label="Termin zajęty"><span class="event-time">{formatTime(item.start??hour)}</span><strong>Termin zajęty</strong><span>Szczegóły ukryte</span></div>
+                      {/if}
                     {/each}
                   </div>
                 {/each}
@@ -286,7 +322,7 @@
                 <div class:other={date.other} class:closed={index===3 || index===4} class:today={date.n===2 && !date.other} class="month-cell">
                   <div class="month-number"><span>{date.n}</span>{#if date.n===1 && !date.other}<small>ŚWIĘTO</small>{/if}{#if date.n===2 && !date.other}<b>DZIŚ</b>{/if}</div>
                   {#each deliveries.filter(d => (d.day??-1)+28===date.day+28).slice(0,3) as item}
-                    <button class="month-event {item.color}" onclick={() => {selected=item;resolvingConflict=false}}><i></i><strong>{item.start}:00</strong><span>{item.id}</span><small>{item.dock}</small></button>
+                    {#if role === 'admin'}<button class="month-event {item.color}" onclick={() => {selected=item;resolvingConflict=false}}><i></i><strong>{formatTime(item.start??0)}</strong><span>{item.id}</span><small>{item.dock}</small></button>{:else}<div class="month-event private-event"><i></i><strong>{formatTime(item.start??0)}</strong><span>Termin zajęty</span></div>{/if}
                   {/each}
                   {#if index===3}<span class="closed-label">Magazyn zamknięty</span>{/if}
                 </div>
