@@ -36,12 +36,6 @@
       {/if}
       <Button type="submit" class="wide">Zaloguj się</Button>
     </form>
-
-    <div class="demo-accounts">
-      <span class="eyebrow">KONTA DEMONSTRACYJNE</span>
-      <div><ShieldCheck size={16}/><span><strong>Administrator</strong><small>admin / admin123</small></span></div>
-      <div><Truck size={16}/><span><strong>Dostawca</strong><small>dostawca / dostawca123</small></span></div>
-    </div>
   </section>
   <aside class="login-visual">
     <div class="gate-lines"></div>
