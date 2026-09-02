@@ -2,11 +2,12 @@
   import { Button } from '$lib/components/ui/button';
   import { Badge } from '$lib/components/ui/badge';
   import { Input } from '$lib/components/ui/input';
+  import { Textarea } from '$lib/components/ui/textarea';
   import * as Dialog from '$lib/components/ui/dialog';
   import { CalendarDays, ChevronLeft, ChevronRight, CircleAlert, Clock3, Dock, GripVertical, LayoutGrid, ListFilter, Plus, Search, Settings2, SlidersHorizontal, Truck, UserRound, Warehouse, X, Check, MapPin, Weight, PackageOpen, ShieldAlert, LogOut, Bell, MoreHorizontal, ExternalLink, ArrowRight, CalendarSearch, Trash2 } from '@lucide/svelte';
 
   type View = 'terminarz' | 'dostawca' | 'konfiguracja';
-  type Delivery = { id:string; supplier:string; load:string; pallets:number; weight:string; duration:number; status:string; plate:string; dock?:string; day?:number; start?:number; color:string };
+  type Delivery = { id:string; supplier:string; load:string; pallets:number; weight:string; duration:number; status:string; plate:string; dock?:string; day?:number; start?:number; color:string; erpStatus?:string; orderDate?:string; lines?:Array<{code:string;name:string;quantity:string;delivery:string}>; conflictSide?:'left'|'right'; conflictWith?:string };
   type SupplierSlot = { key:string; d:string; n:string; m:string; dateLabel:string; time:string; dock:string; start:number; day:number };
 
   let view: View = $state('terminarz');
@@ -14,8 +15,16 @@
   let dockFilter = $state('Wszystkie doki');
   let query = $state('');
   let selected: Delivery | null = $state(null);
+  let selectedOrderDocument: Delivery | null = $state(null);
+  let resolvingConflict = $state(false);
+  let orderOpen = $state(false);
   let addOpen = $state(false);
   let toast = $state('');
+  let newOrderNumber = $state('');
+  let newSupplier = $state('');
+  let orderLinked = $state(false);
+  let cargoDescription = $state('');
+  let newAwizationFields = $state<Record<string,string>>({});
   let searchDuration = $state('1 godzina');
   let searchFrom = $state('08:00');
   let searchTo = $state('12:00');
@@ -27,10 +36,16 @@
   let supplierDeliveries = $state<Delivery[]>([]);
   let configTab = $state<'docks'|'fields'|'notifications'|'users'>('docks');
   let customFields = $state([
-    {name:'Pole A',label:'Numer partii',enabled:true},
-    {name:'Pole B',label:'Sposób rozładunku',enabled:true},
-    {name:'Pole C',label:'Osoba kontaktowa',enabled:true},
-    {name:'Pole D',label:'Uwagi dla magazynu',enabled:false}
+    {name:'Pole A',label:'Numer partii',value:'NS-0425',enabled:true},
+    {name:'Pole B',label:'Sposób rozładunku',value:'Rozładunek bokiem',enabled:true},
+    {name:'Pole C',label:'Osoba kontaktowa',value:'+48 600 230 411',enabled:true},
+    {name:'Pole D',label:'Uwagi dla magazynu',value:'Wymagany wózek 5 t',enabled:true},
+    {name:'Pole E',label:'Numer plomby',value:'PL-884190',enabled:true},
+    {name:'Pole F',label:'Temperatura ładunku',value:'18°C',enabled:true},
+    {name:'Pole G',label:'Kraj pochodzenia',value:'Niemcy',enabled:true},
+    {name:'Pole H',label:'Numer partii dostawcy',value:'HU-2025-118',enabled:true},
+    {name:'Pole I',label:'Rodzaj opakowania',value:'Paleta EUR',enabled:true},
+    {name:'Pole J',label:'Wymagane wyposażenie',value:'Rampa mobilna',enabled:true}
   ]);
   let notifications = $state([
     {title:'Konflikt terminów',description:'Gdy dwie dostawy zajmują ten sam dok.',enabled:true},
@@ -91,14 +106,15 @@
     { id:'ZG/0450/25', supplier:'NordSteel Sp. z o.o.', load:'Blacha zimnowalcowana', pallets:8, weight:'12 400 kg', duration:2, status:'Planowany', plate:'WGM 4K92', dock:'DOK 01', day:0, start:8, color:'blue' },
     { id:'ZG/0441/25', supplier:'Polimer SA', load:'Granulat PA6', pallets:14, weight:'8 200 kg', duration:1.5, status:'W trakcie rozładunku', plate:'PO 8N220', dock:'DOK 02', day:0, start:10.5, color:'green' },
     { id:'ZZ/0198/25', supplier:'Logistar GmbH', load:'Komponenty montażowe', pallets:5, weight:'3 850 kg', duration:1, status:'Oczekujący', plate:'B-QL 774', dock:'DOK 03', day:1, start:7.5, color:'amber' },
-    { id:'ZG/0427/25', supplier:'Stalmet S.A.', load:'Profile aluminiowe', pallets:12, weight:'9 700 kg', duration:2, status:'Konflikt', plate:'SK 92LT', dock:'DOK 01', day:2, start:11, color:'red' },
+    { id:'ZG/0427/25', supplier:'Stalmet S.A.', load:'Profile aluminiowe', pallets:12, weight:'9 700 kg', duration:2, status:'Konflikt', plate:'SK 92LT', dock:'DOK 01', day:2, start:11, color:'red', conflictSide:'left', conflictWith:'ZZ/0204/25' },
+    { id:'ZZ/0204/25', supplier:'AluTrade GmbH', load:'Formatki aluminiowe', pallets:7, weight:'5 900 kg', duration:1.5, status:'Konflikt', plate:'B-AT 204', dock:'DOK 01', day:2, start:11, color:'red', conflictSide:'right', conflictWith:'ZG/0427/25' },
     { id:'ZG/0409/25', supplier:'Chemiko Sp. z o.o.', load:'Środki techniczne', pallets:4, weight:'2 100 kg', duration:1, status:'Opóźniony', plate:'KR 7PY42', dock:'DOK 02', day:4, start:9, color:'orange' },
     { id:'ZG/0398/25', supplier:'Metalform', load:'Odlewy żeliwne', pallets:10, weight:'11 300 kg', duration:1.5, status:'Zakończony', plate:'DW 3E129', dock:'DOK 03', day:1, start:13, color:'slate' }
   ]);
   const queue = $state<Delivery[]>([
-    { id:'ZG/0462/25', supplier:'Hutmen S.A.', load:'Pręty miedziane', pallets:6, weight:'7 200 kg', duration:2, status:'Oczekujący', plate:'', color:'violet' },
-    { id:'ZG/0467/25', supplier:'TechnoParts', load:'Podzespoły', pallets:3, weight:'1 850 kg', duration:1, status:'Oczekujący', plate:'', color:'teal' },
-    { id:'ZG/0471/25', supplier:'EuroPack', load:'Opakowania zwrotne', pallets:18, weight:'4 600 kg', duration:1.5, status:'Oczekujący', plate:'', color:'indigo' }
+    { id:'ZG/0462/25', supplier:'Hutmen S.A.', load:'Pręty miedziane', pallets:6, weight:'7 200 kg', duration:2, status:'Oczekujący', plate:'', color:'violet', erpStatus:'Potwierdzone', orderDate:'24.04.2025', lines:[{code:'MIE-PR-20',name:'Pręt miedziany Cu-ETP Ø20',quantity:'3 200 kg',delivery:'29.04.2025'},{code:'MIE-PR-35',name:'Pręt miedziany Cu-ETP Ø35',quantity:'4 000 kg',delivery:'29.04.2025'}] },
+    { id:'ZG/0467/25', supplier:'TechnoParts', load:'Podzespoły', pallets:3, weight:'1 850 kg', duration:1, status:'Oczekujący', plate:'', color:'teal', erpStatus:'W realizacji', orderDate:'25.04.2025', lines:[{code:'TP-88410',name:'Zespół łożyskowy A14',quantity:'240 szt.',delivery:'30.04.2025'},{code:'TP-11802',name:'Obudowa przekładni P8',quantity:'80 szt.',delivery:'30.04.2025'}] },
+    { id:'ZG/0471/25', supplier:'EuroPack', load:'Opakowania zwrotne', pallets:18, weight:'4 600 kg', duration:1.5, status:'Oczekujący', plate:'', color:'indigo', erpStatus:'Potwierdzone', orderDate:'25.04.2025', lines:[{code:'PAL-EUR-A',name:'Paleta EUR EPAL klasa A',quantity:'120 szt.',delivery:'02.05.2025'},{code:'KOSZ-GIT',name:'Kosz transportowy Gitterbox',quantity:'24 szt.',delivery:'02.05.2025'}] }
   ]);
 
   let filteredQueue = $derived(queue.filter(x => (x.id + x.supplier + x.load).toLowerCase().includes(query.toLowerCase())));
@@ -147,17 +163,41 @@
       color:'blue'
     });
     availableSlots.splice(availableSlots.findIndex(slot => slot.key === pendingSlot?.key),1);
+
     slotResults = slotResults.filter(slot => slot.key !== pendingSlot?.key);
     bookingOpen = false;
     toast = `${selectedOrder} zaplanowano na ${pendingSlot.dateLabel}, ${pendingSlot.time}`;
     pendingSlot = null;
     setTimeout(() => toast = '', 3200);
   }
+  function addCustomField() {
+    const suffix = String.fromCharCode(65 + customFields.length);
+    customFields.push({
+      name:`Pole ${suffix}`,
+      label:`Dodatkowa informacja ${customFields.length + 1}`,
+      value:'Brak danych',
+      enabled:true
+    });
+  }
   function addDock() {
     if (!newDock.trim()) return;
     docks.push(newDock.trim().toUpperCase());
     dockEnabled.push(true);
     newDock='';
+  }
+
+  function linkPurchaseOrder() {
+    const normalized = newOrderNumber.trim().toUpperCase();
+    const order = queue.find(item => item.id.toUpperCase() === normalized);
+    if (!order) {
+      orderLinked = false;
+      toast = 'Nie znaleziono zamówienia w ImpulsERP';
+      setTimeout(() => toast = '', 3200);
+      return;
+    }
+    newSupplier = order.supplier;
+    cargoDescription = order.lines?.map(line => `${line.name}, ${line.quantity}`).join('\n') ?? order.load;
+    orderLinked = true;
   }
 </script>
 
@@ -182,9 +222,16 @@
         <div class="queue-filters"><button class="selected">Wszystkie <span>{queue.length}</span></button><button>ZG <span>2</span></button><button>ZZ <span>1</span></button><button aria-label="Filtry"><ListFilter size={15}/></button></div>
         <div class="queue-list">
           {#each filteredQueue as item}
-            <article class="queue-card" draggable="true" ondragstart={(e) => e.dataTransfer?.setData('text/plain', item.id)}>
-              <GripVertical size={17} class="grip"/><div class="queue-content"><div class="queue-top"><span class="doc-id">{item.id}</span><span class="duration"><Clock3 size={12}/>{item.duration} h</span></div><strong>{item.supplier}</strong><p>{item.load}</p><div class="meta"><span><PackageOpen size={13}/>{item.pallets} pal.</span><span><Weight size={13}/>{item.weight}</span></div></div>
-            </article>
+            <button class="queue-card" draggable="true" ondragstart={(e) => e.dataTransfer?.setData('text/plain', item.id)} onclick={() => {selectedOrderDocument=item;orderOpen=true}}>
+              <GripVertical size={17} class="grip"/>
+              <div class="queue-content">
+                <div class="queue-top"><span class="doc-id">{item.id}</span><span class="duration"><Clock3 size={12}/>{item.duration} h</span></div>
+                <div class="erp-meta"><Badge variant="outline">{item.erpStatus}</Badge><span>{item.orderDate}</span></div>
+                <strong>{item.supplier}</strong>
+                <p>{item.load}</p>
+                <div class="meta"><span><PackageOpen size={13}/>{item.pallets} pal.</span><span><Weight size={13}/>{item.weight}</span></div>
+              </div>
+            </button>
           {:else}<div class="empty">Brak pasujących zamówień.</div>{/each}
         </div>
         <div class="drop-hint"><GripVertical size={15}/><span>Przeciągnij zamówienie na wolny termin</span></div>
@@ -207,8 +254,8 @@
                 {#each days as day, dayIndex}
                   <div role="gridcell" tabindex="0" aria-label={`Wolny termin ${day.date}, ${formatTime(hour)}`} class:closed={dayIndex===3} class="time-cell" ondragover={(e)=>e.preventDefault()} ondrop={(e)=>dropDelivery(e,dayIndex,hour)}>
                     {#each deliveries.filter(d => d.day===dayIndex && d.start===hour) as item}
-                      <button class="event {item.color}" style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => selected=item}>
-                        <span class="event-time">{formatTime(item.start??hour)} · {item.dock}</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.plate || 'Brak rejestracji'}</small>{#if item.status==='Konflikt'}<CircleAlert size={14} class="alert-icon"/>{/if}
+                      <button class="event {item.color}" class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => {selected=item;resolvingConflict=false}}>
+                        <span class="event-time">{formatTime(item.start??hour)} · {item.dock}</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.conflictWith ? `Koliduje z ${item.conflictWith}` : item.plate || 'Brak rejestracji'}</small>{#if item.status==='Konflikt'}<CircleAlert size={14} class="alert-icon"/>{/if}
                       </button>
                     {/each}
                   </div>
@@ -224,7 +271,7 @@
                 {#each docks as dock, dockIndex}
                   <div role="gridcell" tabindex="0" aria-label={`${dock}, ${formatTime(hour)}`} class:closed={!dockEnabled[dockIndex]} class="time-cell" ondragover={(e)=>e.preventDefault()} ondrop={(e)=>dropDelivery(e,0,hour)}>
                     {#each deliveries.filter(d => d.day===0 && d.dock===dock && d.start===hour) as item}
-                      <button class="event {item.color}" style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => selected=item}>
+                      <button class="event {item.color}" style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => {selected=item;resolvingConflict=false}}>
                         <span class="event-time">{formatTime(item.start??hour)} · {item.duration} h</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.plate}</small>
                       </button>
                     {/each}
@@ -239,7 +286,7 @@
                 <div class:other={date.other} class:closed={index===3 || index===4} class:today={date.n===2 && !date.other} class="month-cell">
                   <div class="month-number"><span>{date.n}</span>{#if date.n===1 && !date.other}<small>ŚWIĘTO</small>{/if}{#if date.n===2 && !date.other}<b>DZIŚ</b>{/if}</div>
                   {#each deliveries.filter(d => (d.day??-1)+28===date.day+28).slice(0,3) as item}
-                    <button class="month-event {item.color}" onclick={() => selected=item}><i></i><strong>{item.start}:00</strong><span>{item.id}</span><small>{item.dock}</small></button>
+                    <button class="month-event {item.color}" onclick={() => {selected=item;resolvingConflict=false}}><i></i><strong>{item.start}:00</strong><span>{item.id}</span><small>{item.dock}</small></button>
                   {/each}
                   {#if index===3}<span class="closed-label">Magazyn zamknięty</span>{/if}
                 </div>
@@ -256,7 +303,7 @@
         <aside class="finder-card">
           <div class="finder-icon"><CalendarSearch size={22}/></div><h2>Znajdź wolny termin</h2><p>Sprawdzimy dostępność doków w ciągu najbliższych 14 dni.</p>
           <label>Zamówienie<select bind:value={selectedOrder}>{#each supplierOrders as order}<option value={order.id}>{order.label}</option>{/each}</select></label>
-          <label>Czas rozładunku<select bind:value={searchDuration}><option>30 minut</option><option>1 godzina</option><option>2 godziny</option><option>4 godziny</option></select></label>
+          <label>Minimalne okno czasowe rozładunku<select bind:value={searchDuration}><option>30 minut</option><option>1 godzina</option><option>2 godziny</option><option>4 godziny</option></select></label>
           <div class="two-fields"><label>Najwcześniej<Input type="time" bind:value={searchFrom}/></label><label>Najpóźniej<Input type="time" bind:value={searchTo}/></label></div>
           <Button class="wide" onclick={searchSupplierSlots}><Search size={16}/>Pokaż wolne terminy</Button>
         </aside>
@@ -342,7 +389,7 @@
             </article>
           {:else if configTab === 'fields'}
             <article class="settings-card">
-              <div class="settings-head"><div><h2>Pola dodatkowe</h2><p>Te dane pojawią się w formularzu awizacji.</p></div><Button size="sm" variant="outline"><Plus size={15}/>Dodaj pole</Button></div>
+              <div class="settings-head"><div><h2>Pola dodatkowe</h2><p>Te dane pojawią się w formularzu awizacji.</p></div><Button size="sm" variant="outline" onclick={addCustomField}><Plus size={15}/>Dodaj pole</Button></div>
               <div class="preference-list">
                 {#each customFields as field}
                   <div class:disabled={!field.enabled}>
@@ -388,13 +435,128 @@
   <aside class="detail-drawer">
     <div class="drawer-head"><div><Badge variant="outline">{selected.dock}</Badge><h2>{selected.id}</h2><p>{selected.supplier}</p></div><button onclick={() => selected=null}><X size={20}/></button></div>
     <div class="status-banner {selected.color}"><span><i></i>{selected.status}</span><small>{days[selected.day??0].date} · {selected.start}:00–{(selected.start??0)+selected.duration}:00</small></div>
+    {#if selected.conflictWith}
+      <div class="conflict-notice">
+        <CircleAlert size={17}/>
+        <span><strong>Ten sam dok i czas</strong>Koliduje z awizacją {selected.conflictWith}.</span>
+        {#if !resolvingConflict}
+          <Button size="sm" variant="outline" onclick={() => resolvingConflict=true}>Rozwiąż problem</Button>
+        {/if}
+      </div>
+      {#if resolvingConflict}
+        <div class="conflict-resolution">
+          <div><CalendarSearch size={17}/><span><strong>Znajdź wolny slot</strong>Wybierz termin bez kolizji dla tej awizacji.</span></div>
+          <Button size="sm" onclick={() => toast='Wyszukiwanie alternatywnych terminów'}>Zaproponuj inny termin<ArrowRight size={15}/></Button>
+        </div>
+      {/if}
+    {/if}
     <div class="drawer-section"><span class="eyebrow">TRANSPORT</span><div class="plate"><Truck size={20}/><div><small>NUMER REJESTRACYJNY</small><strong>{selected.plate}</strong></div></div><div class="info-grid"><div><PackageOpen size={17}/><span>Ładunek<strong>{selected.load}</strong></span></div><div><Weight size={17}/><span>Masa<strong>{selected.weight}</strong></span></div><div><LayoutGrid size={17}/><span>Nośniki<strong>{selected.pallets} palet</strong></span></div><div><ShieldAlert size={17}/><span>Klasa ADR<strong>Nie dotyczy</strong></span></div></div></div>
-    <div class="drawer-section"><span class="eyebrow">DODATKOWE INFORMACJE</span><div class="extra-fields"><div><small>Pole A</small><span>Nr partii: NS-0425</span></div><div><small>Pole B</small><span>Rozładunek bokiem</span></div><div><small>Pole C</small><span>Kontakt: +48 600 230 411</span></div><button>+ 7 dodatkowych pól</button></div></div>
+    <div class="drawer-section">
+      <span class="eyebrow">DODATKOWE INFORMACJE</span>
+      <div class="extra-fields">
+        {#each customFields.filter(field => field.enabled) as field}
+          <label>
+            <span>{field.label}</span>
+            <Input bind:value={field.value} aria-label={field.label}/>
+          </label>
+        {/each}
+      </div>
+    </div>
     <div class="drawer-footer"><Button variant="outline"><ExternalLink size={15}/>Dokument źródłowy</Button><Button onclick={() => advanceStatus(selected!)}>{#if selected.status==='W trakcie rozładunku'}<LogOut size={16}/>{:else}<Check size={16}/>{/if} {selected.status==='W trakcie rozładunku'?'Zakończ rozładunek':'Potwierdź podjazd auta'}</Button></div>
   </aside>
 {/if}
 
-<Dialog.Root bind:open={addOpen}><Dialog.Content class="sm:max-w-[520px]"><Dialog.Header><Dialog.Title>Nowa awizacja</Dialog.Title><Dialog.Description>Dodaj dokument ZG lub dostawę spoza systemu.</Dialog.Description></Dialog.Header><div class="dialog-form"><label>Numer dokumentu<Input placeholder="np. ZG/0480/25 lub własny numer"/></label><label>Dostawca<Input placeholder="Nazwa firmy"/></label><div class="two-fields"><label>Data<Input type="date" value="2025-04-30"/></label><label>Godzina<Input type="time" value="10:00"/></label></div><div class="two-fields"><label>Numer rejestracyjny<Input placeholder="np. PO 1234A"/></label><label>Liczba palet<Input type="number" placeholder="0"/></label></div></div><Dialog.Footer><Button variant="outline" onclick={() => addOpen=false}>Anuluj</Button><Button onclick={() => {addOpen=false;toast='Awizacja została dodana'}}>Dodaj awizację</Button></Dialog.Footer></Dialog.Content></Dialog.Root>
+<Dialog.Root bind:open={addOpen}>
+  <Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
+    <Dialog.Header>
+      <Dialog.Title>Nowa awizacja</Dialog.Title>
+      <Dialog.Description>Powiąż zamówienie z ImpulsERP albo wpisz dane ręcznie.</Dialog.Description>
+    </Dialog.Header>
+    <div class="dialog-form">
+      <label>
+        Numer zamówienia
+        <div class="link-order-row">
+          <Input bind:value={newOrderNumber} placeholder="np. ZG/0462/25" oninput={() => orderLinked=false}/>
+          <Button variant="outline" onclick={linkPurchaseOrder}><ExternalLink size={15}/>Powiąż</Button>
+        </div>
+        {#if orderLinked}<small class="link-success"><Check size={13}/>Powiązano z ImpulsERP</small>{/if}
+      </label>
+      <label>
+        Dostawca
+        <Input bind:value={newSupplier} placeholder="Nazwa firmy" readonly={orderLinked}/>
+      </label>
+      <div class="two-fields">
+        <label>Data<Input type="date" value="2025-04-30"/></label>
+        <label>Godzina<Input type="time" value="10:00"/></label>
+      </div>
+      <div class="two-fields">
+        <label>Numer rejestracyjny<Input placeholder="np. PO 1234A"/></label>
+        <label>Liczba palet<Input type="number" placeholder="0"/></label>
+      </div>
+      <label>
+        Opis zawartości
+        <Textarea bind:value={cargoDescription} rows={4} placeholder="Wpisz rodzaj towaru, liczbę opakowań i uwagi do rozładunku..."/>
+      </label>
+      <details class="notice-details">
+        <summary>
+          <span><SlidersHorizontal size={15}/>Szczegóły</span>
+          <small>{customFields.filter(field => field.enabled).length} pól</small>
+          <ChevronRight size={16}/>
+        </summary>
+        <div class="notice-detail-fields">
+          {#each customFields.filter(field => field.enabled) as field}
+            <label>
+              {field.label}
+              <Input bind:value={newAwizationFields[field.name]} placeholder={`Wpisz: ${field.label.toLowerCase()}`}/>
+            </label>
+          {/each}
+        </div>
+      </details>
+    </div>
+    <Dialog.Footer>
+      <Button variant="outline" onclick={() => addOpen=false}>Anuluj</Button>
+      <Button onclick={() => {addOpen=false;toast='Awizacja została dodana'}}>Dodaj awizację</Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
 <Dialog.Root bind:open={bookingOpen}><Dialog.Content class="sm:max-w-[460px]"><Dialog.Header><Dialog.Title>Potwierdź termin dostawy</Dialog.Title><Dialog.Description>Wybrany slot zostanie zablokowany dla innych dostawców.</Dialog.Description></Dialog.Header>{#if pendingSlot}<div class="booking-summary"><div class="booking-date"><CalendarDays size={20}/><span><small>TERMIN</small><strong>{pendingSlot.n} {pendingSlot.m}, {pendingSlot.time}</strong></span></div><div><span>Dokument</span><strong>{selectedOrder}</strong></div><div><span>Czas rozładunku</span><strong>{searchDuration}</strong></div><div><span>Stanowisko</span><strong>{pendingSlot.dock}</strong></div></div>{/if}<Dialog.Footer><Button variant="outline" onclick={() => bookingOpen=false}>Wróć</Button><Button onclick={confirmSupplierBooking}><Check size={16}/>Potwierdź rezerwację</Button></Dialog.Footer></Dialog.Content></Dialog.Root>
+<Dialog.Root bind:open={orderOpen}>
+  <Dialog.Content class="sm:max-w-[680px]">
+    <Dialog.Header>
+      <Dialog.Title>Dokument {selectedOrderDocument?.id}</Dialog.Title>
+      <Dialog.Description>Zamówienie zakupu pobrane z ImpulsERP.</Dialog.Description>
+    </Dialog.Header>
+    {#if selectedOrderDocument}
+      <div class="order-summary">
+        <div><span>Dostawca</span><strong>{selectedOrderDocument.supplier}</strong></div>
+        <div><span>Data zamówienia</span><strong>{selectedOrderDocument.orderDate}</strong></div>
+        <div><span>Status ZG</span><Badge variant="outline">{selectedOrderDocument.erpStatus}</Badge></div>
+        <div><span>Planowana dostawa</span><strong>{selectedOrderDocument.lines?.[0]?.delivery}</strong></div>
+      </div>
+      <div class="order-lines">
+        <div class="order-line header"><span>Indeks</span><span>Pozycja zamówienia</span><span>Ilość</span><span>Termin</span></div>
+        {#each selectedOrderDocument.lines ?? [] as line}
+          <div class="order-line">
+            <span>{line.code}</span>
+            <strong>{line.name}</strong>
+            <span>{line.quantity}</span>
+            <span>{line.delivery}</span>
+          </div>
+        {/each}
+      </div>
+      <div class="order-total">
+        <span>Łącznie</span>
+        <strong>{selectedOrderDocument.pallets} palet · {selectedOrderDocument.weight}</strong>
+      </div>
+    {/if}
+    <Dialog.Footer>
+      <Button variant="outline" onclick={() => orderOpen=false}>Zamknij</Button>
+      <Button onclick={() => {orderOpen=false;toast='Dokument gotowy do zaplanowania'}}>
+        <CalendarDays size={16}/>
+        Zaplanuj dostawę
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
 
 {#if toast}<div class="toast"><Check size={18}/><span>{toast}</span><button onclick={() => toast=''}><X size={15}/></button></div>{/if}
