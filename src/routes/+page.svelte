@@ -10,11 +10,17 @@
   type Delivery = { id:string; supplier:string; load:string; pallets:number; weight:string; duration:number; status:string; plate:string; dock?:string; day?:number; start?:number; color:string; erpStatus?:string; orderDate?:string; lines?:Array<{code:string;name:string;quantity:string;delivery:string}>; conflictSide?:'left'|'right'; conflictWith?:string };
   type SupplierSlot = { key:string; d:string; n:string; m:string; dateLabel:string; time:string; dock:string; start:number; day:number };
 
+  let { data }: { data: { user: { login:string; name:string; role:'admin'|'supplier' } } } = $props();
+  let role = $derived(data.user.role);
   let view: View = $state('terminarz');
-  let role = $state<'admin'|'supplier'>('admin');
-  let userMenuOpen = $state(false);
   let period = $state<'Dzień'|'Tydzień'|'Miesiąc'>('Tydzień');
   let dockFilter = $state('Wszystkie doki');
+  let dockMenuOpen = $state(false);
+  let visibleDocks = $state([true, true, true]);
+
+  function showAllDocks() {
+    visibleDocks = docks.map(() => true);
+  }
   let query = $state('');
   let selected: Delivery | null = $state(null);
   let selectedOrderDocument: Delivery | null = $state(null);
@@ -67,6 +73,9 @@
     {day:'Sobota',from:'07:00',to:'15:00',on:false},
     {day:'Niedziela',from:'07:00',to:'15:00',on:false}
   ]);
+  function dockClass(dock?:string) {
+    return dock === 'DOK 02' ? 'dock-2' : dock === 'DOK 03' ? 'dock-3' : 'dock-1';
+  }
   const monthDays = [
     {n:28,other:true,day:0},{n:29,other:true,day:1},{n:30,other:true,day:2},
     ...Array.from({length:31},(_,i)=>({n:i+1,other:false,day:i+3})),
@@ -215,18 +224,11 @@
     </nav>
     <div class="top-actions">
       <button class="icon-button" aria-label="Powiadomienia"><Bell size={18}/><span class="notification"></span></button>
-      <button class="account-switcher" onclick={() => userMenuOpen=!userMenuOpen} aria-expanded={userMenuOpen}>
+      <div class="account-summary">
         <span class="avatar">{role === 'admin' ? 'KM' : 'NS'}</span>
-        <span class="user"><strong>{role === 'admin' ? 'Kamil Michalski' : 'NordSteel Sp. z o.o.'}</strong><span>{role === 'admin' ? 'Administrator' : 'Dostawca'}</span></span>
-        <ChevronRight size={16} class={userMenuOpen ? 'user-chevron-open' : ''}/>
-      </button>
-      {#if userMenuOpen}
-        <div class="user-menu">
-          <span class="eyebrow">PRZEŁĄCZ UŻYTKOWNIKA</span>
-          <button class:active={role==='admin'} onclick={() => {role='admin';view='terminarz';userMenuOpen=false}}><span class="avatar">KM</span><span><strong>Admin</strong><small>Pełny dostęp</small></span>{#if role==='admin'}<Check size={15}/>{/if}</button>
-          <button class:active={role==='supplier'} onclick={() => {role='supplier';view='dostawca';userMenuOpen=false}}><span class="avatar">NS</span><span><strong>Dostawca</strong><small>Terminarz i panel dostawcy</small></span>{#if role==='supplier'}<Check size={15}/>{/if}</button>
-        </div>
-      {/if}
+        <span class="user"><strong>{data.user.name}</strong><span>{role === 'admin' ? 'Administrator' : 'Dostawca'}</span></span>
+      </div>
+      <a class="logout-button" href="/logout"><LogOut size={16}/>Wyloguj</a>
     </div>
   </header>
 
@@ -258,7 +260,15 @@
           <div><span class="eyebrow">TERMINARZ DOSTAW</span><h1>28 kwietnia – 2 maja 2025</h1></div>
           <div class="toolbar-actions">
             <div class="segmented">{#each ['Dzień','Tydzień','Miesiąc'] as p}<button class:active={period===p} onclick={() => period=p as typeof period}>{p}</button>{/each}</div>
-            <Button variant="outline" size="sm"><Dock size={15}/>{dockFilter}</Button>
+            <Button variant="outline" size="sm" onclick={() => dockMenuOpen=!dockMenuOpen}><Dock size={15}/>DOKi<ChevronRight size={14} class={dockMenuOpen ? 'rotate-90' : ''}/></Button>
+            {#if dockMenuOpen}
+              <div class="dock-menu">
+                <div class="dock-menu-head"><span>Widoczność doków</span><button onclick={showAllDocks}>Pokaż wszystkie</button></div>
+                {#each docks as dock, i}
+                  <label><input type="checkbox" bind:checked={visibleDocks[i]}/><span class={`dock-badge ${dockClass(dock)}`}>{dock}</span><strong>{dock}</strong></label>
+                {/each}
+              </div>
+            {/if}
             {#if role === 'admin'}<Button size="sm" onclick={() => addOpen=true}><Plus size={16}/>Nowa awizacja</Button>{/if}
           </div>
         </div>
@@ -271,7 +281,6 @@
             <div class="privacy-mode"><ShieldAlert size={14}/>Tryb prywatny: szczegóły dostaw są ukryte</div>
           {/if}
         </div>
-
         <div class="calendar-wrap">
           {#if period === 'Tydzień'}
             <div class="calendar-grid">
@@ -281,17 +290,17 @@
                 <div class="time-label">{formatTime(hour)}</div>
                 {#each days as day, dayIndex}
                   <div role="gridcell" tabindex="0" aria-label={`Wolny termin ${day.date}, ${formatTime(hour)}`} class:closed={dayIndex===3} class="time-cell" ondragover={(e)=>e.preventDefault()} ondrop={(e)=>dropDelivery(e,dayIndex,hour)}>
-                    {#each deliveries.filter(d => d.day===dayIndex && d.start===hour) as item}
+                    {#each deliveries.filter(d => d.day===dayIndex && d.start===hour && visibleDocks[docks.indexOf(d.dock ?? '')]) as item}
                       {#if role === 'admin'}
-                        <button class="event {item.color}" class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => {selected=item;resolvingConflict=false}}>
-                          <span class="event-time">{formatTime(item.start??hour)} · {item.dock}</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.conflictWith ? `Koliduje z ${item.conflictWith}` : item.plate || 'Brak rejestracji'}</small>{#if item.status==='Konflikt'}<CircleAlert size={14} class="alert-icon"/>{/if}
+                        <button class={`event ${item.color}`} class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => {selected=item;resolvingConflict=false}}>
+                          <span class="event-time">{formatTime(item.start??hour)} · <Badge class={`dock-badge ${dockClass(item.dock)}`}>{item.dock}</Badge></span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.conflictWith ? `Koliduje z ${item.conflictWith}` : item.plate || 'Brak rejestracji'}</small>{#if item.status==='Konflikt'}<CircleAlert size={14} class="alert-icon"/>{/if}
                         </button>
                       {:else}
-                        <div class="event private-event" class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} aria-label="Termin zajęty"><span class="event-time">{formatTime(item.start??hour)}</span><strong>Termin zajęty</strong><span>Szczegóły ukryte</span></div>
+                        <div class={`event private-event ${dockClass(item.dock)}`} class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} aria-label="Termin zajęty"><span class="event-time">{formatTime(item.start??hour)} · <Badge class={`dock-badge ${dockClass(item.dock)}`}>{item.dock}</Badge></span><strong>Termin zajęty</strong><span>Szczegóły ukryte</span></div>
                       {/if}
                     {/each}
                   </div>
-                {/each}
+              {/each}
               {/each}
             </div>
           {:else if period === 'Dzień'}
@@ -304,11 +313,11 @@
                   <div role="gridcell" tabindex="0" aria-label={`${dock}, ${formatTime(hour)}`} class:closed={!dockEnabled[dockIndex]} class="time-cell" ondragover={(e)=>e.preventDefault()} ondrop={(e)=>dropDelivery(e,0,hour)}>
                     {#each deliveries.filter(d => d.day===0 && d.dock===dock && d.start===hour) as item}
                       {#if role === 'admin'}
-                        <button class="event {item.color}" style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => {selected=item;resolvingConflict=false}}>
-                          <span class="event-time">{formatTime(item.start??hour)} · {item.duration} h</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.plate}</small>
+                        <button class={`event ${item.color}`} style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => {selected=item;resolvingConflict=false}}>
+                          <span class="event-time">{formatTime(item.start??hour)} · <Badge class={`dock-badge ${dockClass(item.dock)}`}>{item.dock}</Badge></span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.plate}</small>
                         </button>
                       {:else}
-                        <div class="event private-event" style={`height:${Math.max(30,item.duration*68-4)}px`} aria-label="Termin zajęty"><span class="event-time">{formatTime(item.start??hour)}</span><strong>Termin zajęty</strong><span>Szczegóły ukryte</span></div>
+                        <div class={`event private-event ${dockClass(item.dock)}`} style={`height:${Math.max(30,item.duration*68-4)}px`} aria-label="Termin zajęty"><span class="event-time">{formatTime(item.start??hour)}</span><strong>Termin zajęty</strong><span>Szczegóły ukryte</span></div>
                       {/if}
                     {/each}
                   </div>
@@ -322,7 +331,7 @@
                 <div class:other={date.other} class:closed={index===3 || index===4} class:today={date.n===2 && !date.other} class="month-cell">
                   <div class="month-number"><span>{date.n}</span>{#if date.n===1 && !date.other}<small>ŚWIĘTO</small>{/if}{#if date.n===2 && !date.other}<b>DZIŚ</b>{/if}</div>
                   {#each deliveries.filter(d => (d.day??-1)+28===date.day+28).slice(0,3) as item}
-                    {#if role === 'admin'}<button class="month-event {item.color}" onclick={() => {selected=item;resolvingConflict=false}}><i></i><strong>{formatTime(item.start??0)}</strong><span>{item.id}</span><small>{item.dock}</small></button>{:else}<div class="month-event private-event"><i></i><strong>{formatTime(item.start??0)}</strong><span>Termin zajęty</span></div>{/if}
+                    {#if role === 'admin'}<button class={`month-event ${dockClass(item.dock)}`} onclick={() => {selected=item;resolvingConflict=false}}><i></i><strong>{formatTime(item.start??0)}</strong><span>{item.id}</span><small>{item.dock}</small></button>{:else}<div class={`month-event private-event ${dockClass(item.dock)}`}><i></i><strong>{formatTime(item.start??0)}</strong><span>Termin zajęty</span></div>{/if}
                   {/each}
                   {#if index===3}<span class="closed-label">Magazyn zamknięty</span>{/if}
                 </div>
@@ -587,9 +596,13 @@
     {/if}
     <Dialog.Footer>
       <Button variant="outline" onclick={() => orderOpen=false}>Zamknij</Button>
+      <Button variant="outline">
+        <PackageOpen size={16}/>
+        Zarejestruj opakowania zwrotne
+      </Button>
       <Button onclick={() => {orderOpen=false;toast='Dokument gotowy do zaplanowania'}}>
         <CalendarDays size={16}/>
-        Zaplanuj dostawę
+        Zaplanuj awizację
       </Button>
     </Dialog.Footer>
   </Dialog.Content>
