@@ -4,7 +4,7 @@
   import { Input } from '$lib/components/ui/input';
   import { Textarea } from '$lib/components/ui/textarea';
   import * as Dialog from '$lib/components/ui/dialog';
-  import { CalendarDays, ChevronLeft, ChevronRight, CircleAlert, Clock3, Dock, GripVertical, LayoutGrid, ListFilter, Plus, Search, Settings2, SlidersHorizontal, Truck, UserRound, Warehouse, X, Check, MapPin, Weight, PackageOpen, ShieldAlert, LogOut, Bell, MoreHorizontal, ExternalLink, ArrowRight, CalendarSearch, Trash2 } from '@lucide/svelte';
+  import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Clock3, Dock, GripVertical, LayoutGrid, ListFilter, Plus, Search, Settings2, SlidersHorizontal, Truck, UserRound, Warehouse, X, Check, MapPin, Weight, PackageOpen, ShieldAlert, LogOut, Bell, MoreHorizontal, ExternalLink, ArrowRight, CalendarSearch, Trash2 } from '@lucide/svelte';
 
   type View = 'terminarz' | 'dostawca' | 'konfiguracja';
   type Delivery = { id:string; supplier:string; load:string; pallets:number; weight:string; duration:number; status:string; plate:string; dock?:string; day?:number; start?:number; color:string; erpStatus?:string; orderDate?:string; lines?:Array<{code:string;name:string;quantity:string;delivery:string}>; conflictSide?:'left'|'right'; conflictWith?:string };
@@ -260,7 +260,7 @@
           <div><span class="eyebrow">TERMINARZ DOSTAW</span><h1>28 kwietnia – 2 maja 2025</h1></div>
           <div class="toolbar-actions">
             <div class="segmented">{#each ['Dzień','Tydzień','Miesiąc'] as p}<button class:active={period===p} onclick={() => period=p as typeof period}>{p}</button>{/each}</div>
-            <Button variant="outline" size="sm" onclick={() => dockMenuOpen=!dockMenuOpen}><Dock size={15}/>DOKi<ChevronRight size={14} class={dockMenuOpen ? 'rotate-90' : ''}/></Button>
+            <Button class="dock-filter-button" variant="outline" size="sm" onclick={() => dockMenuOpen=!dockMenuOpen}><Dock size={15}/><span>DOKi</span><ChevronDown size={14} class={dockMenuOpen ? 'is-open' : ''}/></Button>
             {#if dockMenuOpen}
               <div class="dock-menu">
                 <div class="dock-menu-head"><span>Widoczność doków</span><button onclick={showAllDocks}>Pokaż wszystkie</button></div>
