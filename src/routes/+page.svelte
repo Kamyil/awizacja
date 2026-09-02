@@ -7,6 +7,7 @@
 
   type View = 'terminarz' | 'dostawca' | 'konfiguracja';
   type Delivery = { id:string; supplier:string; load:string; pallets:number; weight:string; duration:number; status:string; plate:string; dock?:string; day?:number; start?:number; color:string };
+  type SupplierSlot = { key:string; d:string; n:string; m:string; dateLabel:string; time:string; dock:string; start:number; day:number };
 
   let view: View = $state('terminarz');
   let period = $state<'Dzień'|'Tydzień'|'Miesiąc'>('Tydzień');
@@ -15,10 +16,15 @@
   let selected: Delivery | null = $state(null);
   let addOpen = $state(false);
   let toast = $state('');
-  let searchDuration = $state('2 godziny');
+  let searchDuration = $state('1 godzina');
   let searchFrom = $state('08:00');
   let searchTo = $state('12:00');
   let searchDone = $state(false);
+  let selectedOrder = $state('ZG/0462/25');
+  let slotResults = $state<SupplierSlot[]>([]);
+  let pendingSlot = $state<SupplierSlot | null>(null);
+  let bookingOpen = $state(false);
+  let supplierDeliveries = $state<Delivery[]>([]);
   let newDock = $state('');
   let docks = $state(['DOK 01', 'DOK 02', 'DOK 03']);
   let dockEnabled = $state([true, true, true]);
@@ -46,6 +52,24 @@
     'Planowany':'blue', 'Konflikt':'red', 'Oczekujący':'amber', 'Opóźniony':'orange',
     'Zakończony':'slate', 'W trakcie rozładunku':'green'
   };
+  const supplierOrders = [
+    {id:'ZG/0462/25', label:'ZG/0462/25 · Pręty miedziane', supplier:'Hutmen S.A.', load:'Pręty miedziane', pallets:6, weight:'7 200 kg'},
+    {id:'ZG/0467/25', label:'ZG/0467/25 · Podzespoły', supplier:'TechnoParts', load:'Podzespoły', pallets:3, weight:'1 850 kg'},
+    {id:'ZG/0471/25', label:'ZG/0471/25 · Opakowania', supplier:'EuroPack', load:'Opakowania zwrotne', pallets:18, weight:'4 600 kg'}
+  ];
+  const availableSlots: SupplierSlot[] = [
+    {key:'29-0800',d:'WT',n:'29',m:'KWI',dateLabel:'29 KWI',time:'08:00',dock:'DOK 02',start:8,day:1},
+    {key:'29-1030',d:'WT',n:'29',m:'KWI',dateLabel:'29 KWI',time:'10:30',dock:'DOK 02',start:10.5,day:1},
+    {key:'29-1300',d:'WT',n:'29',m:'KWI',dateLabel:'29 KWI',time:'13:00',dock:'DOK 02',start:13,day:1},
+    {key:'30-0730',d:'ŚR',n:'30',m:'KWI',dateLabel:'30 KWI',time:'07:30',dock:'DOK 01',start:7.5,day:2},
+    {key:'30-0900',d:'ŚR',n:'30',m:'KWI',dateLabel:'30 KWI',time:'09:00',dock:'DOK 01',start:9,day:2},
+    {key:'30-1230',d:'ŚR',n:'30',m:'KWI',dateLabel:'30 KWI',time:'12:30',dock:'DOK 01',start:12.5,day:2},
+    {key:'02-0830',d:'PT',n:'02',m:'MAJ',dateLabel:'2 MAJ',time:'08:30',dock:'DOK 02',start:8.5,day:4},
+    {key:'02-1100',d:'PT',n:'02',m:'MAJ',dateLabel:'2 MAJ',time:'11:00',dock:'DOK 02',start:11,day:4},
+    {key:'05-0700',d:'PN',n:'05',m:'MAJ',dateLabel:'5 MAJ',time:'07:00',dock:'DOK 01',start:7,day:7},
+    {key:'05-0930',d:'PN',n:'05',m:'MAJ',dateLabel:'5 MAJ',time:'09:30',dock:'DOK 01',start:9.5,day:7},
+    {key:'05-1330',d:'PN',n:'05',m:'MAJ',dateLabel:'5 MAJ',time:'13:30',dock:'DOK 01',start:13.5,day:7}
+  ];
   const deliveries = $state<Delivery[]>([
     { id:'ZG/0450/25', supplier:'NordSteel Sp. z o.o.', load:'Blacha zimnowalcowana', pallets:8, weight:'12 400 kg', duration:2, status:'Planowany', plate:'WGM 4K92', dock:'DOK 01', day:0, start:8, color:'blue' },
     { id:'ZG/0441/25', supplier:'Polimer SA', load:'Granulat PA6', pallets:14, weight:'8 200 kg', duration:1.5, status:'W trakcie rozładunku', plate:'PO 8N220', dock:'DOK 02', day:0, start:10.5, color:'green' },
@@ -61,6 +85,7 @@
   ]);
 
   let filteredQueue = $derived(queue.filter(x => (x.id + x.supplier + x.load).toLowerCase().includes(query.toLowerCase())));
+  let resultDays = $derived(Array.from(new Map(slotResults.map(slot => [slot.dateLabel,{d:slot.d,n:slot.n,m:slot.m,dateLabel:slot.dateLabel}])).values()));
 
   function dropDelivery(event: DragEvent, day:number, hour:number) {
     event.preventDefault();
@@ -78,6 +103,37 @@
     else item.status = 'W trakcie rozładunku';
     item.color = item.status === 'Zakończony' ? 'slate' : 'green';
     toast = item.status === 'Zakończony' ? 'Rozładunek zakończony. Pojazd może odjechać.' : 'Potwierdzono podjazd. Rozładunek rozpoczęty.';
+    setTimeout(() => toast = '', 3200);
+  }
+  function searchSupplierSlots() {
+    const [fromHour,fromMinute] = searchFrom.split(':').map(Number);
+    const [toHour,toMinute] = searchTo.split(':').map(Number);
+    const from = fromHour + fromMinute / 60;
+    const to = toHour + toMinute / 60;
+    const duration = {'30 minut':.5,'1 godzina':1,'2 godziny':2,'4 godziny':4}[searchDuration] ?? 1;
+    slotResults = availableSlots.filter(slot => slot.start >= from && slot.start + duration <= to);
+    searchDone = true;
+  }
+
+  function confirmSupplierBooking() {
+    if (!pendingSlot) return;
+    const order = supplierOrders.find(item => item.id === selectedOrder);
+    if (!order) return;
+    supplierDeliveries.unshift({
+      ...order,
+      duration: {'30 minut':.5,'1 godzina':1,'2 godziny':2,'4 godziny':4}[searchDuration] ?? 1,
+      status:'Planowany',
+      plate:'Do uzupełnienia',
+      dock:pendingSlot.dock,
+      day:pendingSlot.day,
+      start:pendingSlot.start,
+      color:'blue'
+    });
+    availableSlots.splice(availableSlots.findIndex(slot => slot.key === pendingSlot?.key),1);
+    slotResults = slotResults.filter(slot => slot.key !== pendingSlot?.key);
+    bookingOpen = false;
+    toast = `${selectedOrder} zaplanowano na ${pendingSlot.dateLabel}, ${pendingSlot.time}`;
+    pendingSlot = null;
     setTimeout(() => toast = '', 3200);
   }
   function addDock() {
@@ -182,21 +238,27 @@
       <section class="supplier-layout">
         <aside class="finder-card">
           <div class="finder-icon"><CalendarSearch size={22}/></div><h2>Znajdź wolny termin</h2><p>Sprawdzimy dostępność doków w ciągu najbliższych 14 dni.</p>
-          <label>Zamówienie<select><option>ZG/0450/25 · Blacha</option><option>ZG/0462/25 · Pręty</option></select></label>
+          <label>Zamówienie<select bind:value={selectedOrder}>{#each supplierOrders as order}<option value={order.id}>{order.label}</option>{/each}</select></label>
           <label>Czas rozładunku<select bind:value={searchDuration}><option>30 minut</option><option>1 godzina</option><option>2 godziny</option><option>4 godziny</option></select></label>
           <div class="two-fields"><label>Najwcześniej<Input type="time" bind:value={searchFrom}/></label><label>Najpóźniej<Input type="time" bind:value={searchTo}/></label></div>
-          <Button class="wide" onclick={() => searchDone=true}><Search size={16}/>Pokaż wolne terminy</Button>
+          <Button class="wide" onclick={searchSupplierSlots}><Search size={16}/>Pokaż wolne terminy</Button>
         </aside>
         <section class="availability">
-          <div class="availability-head"><div><h2>Dostępne terminy</h2><p>{searchDone ? `Wyniki dla ${searchDuration}, ${searchFrom}–${searchTo}` : 'Najbliższe wolne okna'}</p></div><div class="privacy"><ShieldAlert size={15}/>Widzisz tylko dostępność, bez danych innych dostaw</div></div>
-          <div class="slot-days">
-            {#each [{d:'WT',n:'29',m:'KWI',slots:['08:00','10:30','13:00']},{d:'ŚR',n:'30',m:'KWI',slots:['07:30','09:00','12:30']},{d:'PT',n:'02',m:'MAJ',slots:['08:30','11:00']},{d:'PN',n:'05',m:'MAJ',slots:['07:00','09:30','13:30']}] as day, idx}
-              <article class="slot-day"><div class="slot-date"><span>{day.d}</span><strong>{day.n}</strong><small>{day.m}</small></div><div class="slots">{#each day.slots as slot}<button onclick={() => toast=`Wybrano ${day.n} ${day.m}, ${slot}`}>{slot}<span>{idx%2===0?'DOK 02':'DOK 01'}</span><ArrowRight size={15}/></button>{/each}</div></article>
-            {/each}
-          </div>
+          <div class="availability-head"><div><h2>Dostępne terminy</h2><p>{searchDone ? `${slotResults.length} wyników · ${searchDuration}, ${searchFrom}–${searchTo}` : 'Ustaw parametry i wyszukaj wolny slot'}</p></div><div class="privacy"><ShieldAlert size={15}/>Widzisz tylko dostępność, bez danych innych dostaw</div></div>
+          {#if !searchDone}
+            <div class="slot-empty"><span><CalendarSearch size={25}/></span><strong>Wybierz warunki dostawy</strong><p>Podaj czas rozładunku i zakres godzin, a pokażemy dostępne doki.</p></div>
+          {:else if slotResults.length === 0}
+            <div class="slot-empty"><span><CircleAlert size={25}/></span><strong>Brak terminów w tym zakresie</strong><p>Zmień godziny albo skróć czas rozładunku.</p></div>
+          {:else}
+            <div class="slot-days">
+              {#each resultDays as day}
+                <article class="slot-day"><div class="slot-date"><span>{day.d}</span><strong>{day.n}</strong><small>{day.m}</small></div><div class="slots">{#each slotResults.filter(slot => slot.dateLabel===day.dateLabel) as slot}<button class:selected={pendingSlot?.key===slot.key} onclick={() => {pendingSlot=slot;bookingOpen=true}}>{slot.time}<span>{slot.dock}</span><ArrowRight size={15}/></button>{/each}</div></article>
+              {/each}
+            </div>
+          {/if}
         </section>
       </section>
-      <section class="my-deliveries"><div class="section-head"><div><h2>Moje dostawy</h2><p>Zaplanowane, trwające i zakończone.</p></div><Button variant="outline" size="sm">Zobacz wszystkie <ArrowRight size={15}/></Button></div><div class="delivery-table"><div class="tr th"><span>Dokument</span><span>Termin</span><span>Pojazd</span><span>Status</span><span></span></div>{#each deliveries.slice(0,4) as d}<div class="tr"><strong>{d.id}<small>{d.load}</small></strong><span>{days[d.day??0].date}, {d.start}:00<small>{d.dock}</small></span><span>{d.plate}</span><span><i class="status-pill {d.color}">{d.status}</i></span><button aria-label="Szczegóły"><MoreHorizontal size={17}/></button></div>{/each}</div></section>
+      <section class="my-deliveries"><div class="section-head"><div><h2>Moje dostawy</h2><p>Zaplanowane, trwające i zakończone.</p></div><Button variant="outline" size="sm">Zobacz wszystkie <ArrowRight size={15}/></Button></div><div class="delivery-table"><div class="tr th"><span>Dokument</span><span>Termin</span><span>Pojazd</span><span>Status</span><span></span></div>{#each [...supplierDeliveries,...deliveries].slice(0,4) as d}<div class="tr"><strong>{d.id}<small>{d.load}</small></strong><span>{d.day===7?'5 MAJ':days[d.day??0]?.date}, {String(Math.floor(d.start??0)).padStart(2,'0')}:{(d.start??0)%1?'30':'00'}<small>{d.dock}</small></span><span>{d.plate}</span><span><i class="status-pill {d.color}">{d.status}</i></span><button aria-label="Szczegóły"><MoreHorizontal size={17}/></button></div>{/each}</div></section>
     </main>
   {:else}
     <main class="config-page">
@@ -224,5 +286,6 @@
 {/if}
 
 <Dialog.Root bind:open={addOpen}><Dialog.Content class="sm:max-w-[520px]"><Dialog.Header><Dialog.Title>Nowa awizacja</Dialog.Title><Dialog.Description>Dodaj dokument ZG lub dostawę spoza systemu.</Dialog.Description></Dialog.Header><div class="dialog-form"><label>Numer dokumentu<Input placeholder="np. ZG/0480/25 lub własny numer"/></label><label>Dostawca<Input placeholder="Nazwa firmy"/></label><div class="two-fields"><label>Data<Input type="date" value="2025-04-30"/></label><label>Godzina<Input type="time" value="10:00"/></label></div><div class="two-fields"><label>Numer rejestracyjny<Input placeholder="np. PO 1234A"/></label><label>Liczba palet<Input type="number" placeholder="0"/></label></div></div><Dialog.Footer><Button variant="outline" onclick={() => addOpen=false}>Anuluj</Button><Button onclick={() => {addOpen=false;toast='Awizacja została dodana'}}>Dodaj awizację</Button></Dialog.Footer></Dialog.Content></Dialog.Root>
+<Dialog.Root bind:open={bookingOpen}><Dialog.Content class="sm:max-w-[460px]"><Dialog.Header><Dialog.Title>Potwierdź termin dostawy</Dialog.Title><Dialog.Description>Wybrany slot zostanie zablokowany dla innych dostawców.</Dialog.Description></Dialog.Header>{#if pendingSlot}<div class="booking-summary"><div class="booking-date"><CalendarDays size={20}/><span><small>TERMIN</small><strong>{pendingSlot.n} {pendingSlot.m}, {pendingSlot.time}</strong></span></div><div><span>Dokument</span><strong>{selectedOrder}</strong></div><div><span>Czas rozładunku</span><strong>{searchDuration}</strong></div><div><span>Stanowisko</span><strong>{pendingSlot.dock}</strong></div></div>{/if}<Dialog.Footer><Button variant="outline" onclick={() => bookingOpen=false}>Wróć</Button><Button onclick={confirmSupplierBooking}><Check size={16}/>Potwierdź rezerwację</Button></Dialog.Footer></Dialog.Content></Dialog.Root>
 
 {#if toast}<div class="toast"><Check size={18}/><span>{toast}</span><button onclick={() => toast=''}><X size={15}/></button></div>{/if}
