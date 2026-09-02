@@ -25,6 +25,19 @@
   let pendingSlot = $state<SupplierSlot | null>(null);
   let bookingOpen = $state(false);
   let supplierDeliveries = $state<Delivery[]>([]);
+  let configTab = $state<'docks'|'fields'|'notifications'|'users'>('docks');
+  let customFields = $state([
+    {name:'Pole A',label:'Numer partii',enabled:true},
+    {name:'Pole B',label:'Sposób rozładunku',enabled:true},
+    {name:'Pole C',label:'Osoba kontaktowa',enabled:true},
+    {name:'Pole D',label:'Uwagi dla magazynu',enabled:false}
+  ]);
+  let notifications = $state([
+    {title:'Konflikt terminów',description:'Gdy dwie dostawy zajmują ten sam dok.',enabled:true},
+    {title:'Opóźniony przyjazd',description:'Po przekroczeniu zaplanowanej godziny.',enabled:true},
+    {title:'Nowa rezerwacja dostawcy',description:'Gdy dostawca sam wybierze wolny termin.',enabled:true},
+    {title:'Zakończenie rozładunku',description:'Po zamknięciu awizacji przez magazyniera.',enabled:false}
+  ]);
   let newDock = $state('');
   let docks = $state(['DOK 01', 'DOK 02', 'DOK 03']);
   let dockEnabled = $state([true, true, true]);
@@ -47,7 +60,11 @@
     { week:'PN', date:'28 KWI' }, { week:'WT', date:'29 KWI' }, { week:'ŚR', date:'30 KWI' },
     { week:'CZW', date:'1 MAJ' }, { week:'PT', date:'2 MAJ' }
   ];
-  const hours = [7,8,9,10,11,12,13,14,15];
+  const hours = Array.from({length:17},(_,index) => 7 + index * .5);
+  function formatTime(value:number) {
+    const hour = String(Math.floor(value)).padStart(2,'0');
+    return `${hour}:${value % 1 ? '30' : '00'}`;
+  }
   const statusColors: Record<string,string> = {
     'Planowany':'blue', 'Konflikt':'red', 'Oczekujący':'amber', 'Opóźniony':'orange',
     'Zakończony':'slate', 'W trakcie rozładunku':'green'
@@ -186,12 +203,12 @@
               <div class="corner"><Clock3 size={14}/><span>GMT+2</span></div>
               {#each days as day, index}<div class:closed={index===3} class="day-head"><span>{day.week}</span><strong>{day.date}</strong>{#if index===0}<b>DZIŚ</b>{/if}{#if index===3}<small>ŚWIĘTO</small>{/if}</div>{/each}
               {#each hours as hour}
-                <div class="time-label">{String(hour).padStart(2,'0')}:00</div>
+                <div class="time-label">{formatTime(hour)}</div>
                 {#each days as day, dayIndex}
-                  <div role="gridcell" tabindex="0" aria-label={`Wolny termin ${day.date}, ${hour}:00`} class:closed={dayIndex===3} class="time-cell" ondragover={(e)=>e.preventDefault()} ondrop={(e)=>dropDelivery(e,dayIndex,hour)}>
-                    {#each deliveries.filter(d => d.day===dayIndex && Math.floor(d.start ?? 0)===hour) as item}
-                      <button class="event {item.color}" style={`height:${Math.max(54,item.duration*58)}px; top:${((item.start??hour)-hour)*58}px`} onclick={() => selected=item}>
-                        <span class="event-time">{String(Math.floor(item.start??hour)).padStart(2,'0')}:{(item.start??hour)%1?'30':'00'} · {item.dock}</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.plate || 'Brak rejestracji'}</small>{#if item.status==='Konflikt'}<CircleAlert size={14} class="alert-icon"/>{/if}
+                  <div role="gridcell" tabindex="0" aria-label={`Wolny termin ${day.date}, ${formatTime(hour)}`} class:closed={dayIndex===3} class="time-cell" ondragover={(e)=>e.preventDefault()} ondrop={(e)=>dropDelivery(e,dayIndex,hour)}>
+                    {#each deliveries.filter(d => d.day===dayIndex && d.start===hour) as item}
+                      <button class="event {item.color}" style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => selected=item}>
+                        <span class="event-time">{formatTime(item.start??hour)} · {item.dock}</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.plate || 'Brak rejestracji'}</small>{#if item.status==='Konflikt'}<CircleAlert size={14} class="alert-icon"/>{/if}
                       </button>
                     {/each}
                   </div>
@@ -203,12 +220,12 @@
               <div class="corner"><Clock3 size={14}/><span>GMT+2</span></div>
               {#each docks as dock, dockIndex}<div class="day-head"><span>DOK</span><strong>{String(dockIndex+1).padStart(2,'0')}</strong><small>{dockEnabled[dockIndex] ? 'AKTYWNY' : 'WYŁĄCZONY'}</small></div>{/each}
               {#each hours as hour}
-                <div class="time-label">{String(hour).padStart(2,'0')}:00</div>
+                <div class="time-label">{formatTime(hour)}</div>
                 {#each docks as dock, dockIndex}
-                  <div role="gridcell" tabindex="0" aria-label={`${dock}, ${hour}:00`} class:closed={!dockEnabled[dockIndex]} class="time-cell" ondragover={(e)=>e.preventDefault()} ondrop={(e)=>dropDelivery(e,0,hour)}>
-                    {#each deliveries.filter(d => d.day===0 && d.dock===dock && Math.floor(d.start ?? 0)===hour) as item}
-                      <button class="event {item.color}" style={`height:${Math.max(54,item.duration*58)}px; top:${((item.start??hour)-hour)*58}px`} onclick={() => selected=item}>
-                        <span class="event-time">{String(Math.floor(item.start??hour)).padStart(2,'0')}:{(item.start??hour)%1?'30':'00'} · {item.duration} h</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.plate}</small>
+                  <div role="gridcell" tabindex="0" aria-label={`${dock}, ${formatTime(hour)}`} class:closed={!dockEnabled[dockIndex]} class="time-cell" ondragover={(e)=>e.preventDefault()} ondrop={(e)=>dropDelivery(e,0,hour)}>
+                    {#each deliveries.filter(d => d.day===0 && d.dock===dock && d.start===hour) as item}
+                      <button class="event {item.color}" style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => selected=item}>
+                        <span class="event-time">{formatTime(item.start??hour)} · {item.duration} h</span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.plate}</small>
                       </button>
                     {/each}
                   </div>
@@ -262,12 +279,104 @@
     </main>
   {:else}
     <main class="config-page">
-      <div class="page-title"><div><span class="eyebrow">USTAWIENIA TERMINARZA</span><h1>Doki i dostępność</h1><p>Ustal godziny pracy magazynu i wyłącz dni bez dostaw.</p></div><Button onclick={() => toast='Zmiany zapisane'}><Check size={16}/>Zapisz zmiany</Button></div>
-      <div class="config-layout"><aside class="settings-nav"><button class="active"><Dock size={17}/>Doki i godziny</button><button><SlidersHorizontal size={17}/>Pola awizacji</button><button><Bell size={17}/>Powiadomienia</button><button><UserRound size={17}/>Użytkownicy</button></aside>
+      <div class="page-title">
+        <div>
+          <span class="eyebrow">USTAWIENIA TERMINARZA</span>
+          <h1>{configTab === 'docks' ? 'Doki i dostępność' : configTab === 'fields' ? 'Pola awizacji' : configTab === 'notifications' ? 'Powiadomienia' : 'Użytkownicy'}</h1>
+          <p>{configTab === 'docks' ? 'Ustal godziny pracy magazynu i wyłącz dni bez dostaw.' : configTab === 'fields' ? 'Zdecyduj, jakie informacje zbierasz przy awizacji.' : configTab === 'notifications' ? 'Wybierz zdarzenia, o których system ma informować.' : 'Zarządzaj dostępem do terminarza i panelu magazynu.'}</p>
+        </div>
+        <Button onclick={() => toast='Zmiany zapisane'}>
+          <Check size={16}/>
+          Zapisz zmiany
+        </Button>
+      </div>
+
+      <div class="config-layout">
+        <aside class="settings-nav">
+          <button class:active={configTab === 'docks'} onclick={() => configTab='docks'}><Dock size={17}/>Doki i godziny</button>
+          <button class:active={configTab === 'fields'} onclick={() => configTab='fields'}><SlidersHorizontal size={17}/>Pola awizacji</button>
+          <button class:active={configTab === 'notifications'} onclick={() => configTab='notifications'}><Bell size={17}/>Powiadomienia</button>
+          <button class:active={configTab === 'users'} onclick={() => configTab='users'}><UserRound size={17}/>Użytkownicy</button>
+        </aside>
+
         <section class="config-content">
-          <article class="settings-card"><div class="settings-head"><div><h2>Doki rozładunkowe</h2><p>Aktywne doki są dostępne w terminarzu.</p></div><span>{dockEnabled.filter(Boolean).length} aktywne</span></div><div class="dock-list">{#each docks as dock, i}<div class:disabled={!dockEnabled[i]}><span class="dock-symbol"><Warehouse size={18}/></span><strong>{dock}<small>{i===0?'Dostawy całopojazdowe':i===1?'Drobnica i palety':'Materiały specjalne'}</small></strong><label class="switch"><input type="checkbox" bind:checked={dockEnabled[i]} aria-label={`Aktywność ${dock}`}/><span></span></label><button aria-label={`Usuń ${dock}`} onclick={() => {docks.splice(i,1);dockEnabled.splice(i,1)}}><Trash2 size={16}/></button></div>{/each}</div><div class="add-dock"><Input bind:value={newDock} placeholder="Nazwa nowego doku"/><Button variant="outline" onclick={addDock}><Plus size={16}/>Dodaj dok</Button></div></article>
-          <article class="settings-card"><div class="settings-head"><div><h2>Standardowe godziny przyjęć</h2><p>Możesz ustawić inne godziny dla każdego dnia.</p></div></div><div class="hours-list">{#each workDays as row}<div class:disabled={!row.on}><label class="switch"><input type="checkbox" bind:checked={row.on} aria-label={`Dostawy w dniu ${row.day}`}/><span></span></label><strong>{row.day}</strong>{#if row.on}<Input type="time" bind:value={row.from}/><span>do</span><Input type="time" bind:value={row.to}/>{:else}<small>Brak przyjęć</small>{/if}</div>{/each}</div></article>
-          <article class="settings-card exceptions"><div class="settings-head"><div><h2>Wyjątki w kalendarzu</h2><p>Dni zamknięte lub ze skróconymi godzinami.</p></div><Button variant="outline" size="sm"><Plus size={15}/>Dodaj wyjątek</Button></div><div class="exception-row"><div class="exception-date"><strong>01</strong><span>MAJ<br/>2025</span></div><div><strong>Święto Pracy</strong><p>Magazyn zamknięty</p></div><Badge variant="secondary">Dzień wyłączony</Badge><button><X size={16}/></button></div><div class="exception-row"><div class="exception-date"><strong>02</strong><span>MAJ<br/>2025</span></div><div><strong>Skrócony dzień pracy</strong><p>Przyjęcia od 07:00 do 12:00</p></div><Badge variant="outline">Skrócone godziny</Badge><button><X size={16}/></button></div></article>
+          {#if configTab === 'docks'}
+            <article class="settings-card">
+              <div class="settings-head">
+                <div><h2>Doki rozładunkowe</h2><p>Aktywne doki są dostępne w terminarzu.</p></div>
+                <span>{dockEnabled.filter(Boolean).length} aktywne</span>
+              </div>
+              <div class="dock-list">
+                {#each docks as dock, i}
+                  <div class:disabled={!dockEnabled[i]}>
+                    <span class="dock-symbol"><Warehouse size={18}/></span>
+                    <strong>{dock}<small>{i===0?'Dostawy całopojazdowe':i===1?'Drobnica i palety':'Materiały specjalne'}</small></strong>
+                    <label class="switch"><input type="checkbox" bind:checked={dockEnabled[i]} aria-label={`Aktywność ${dock}`}/><span></span></label>
+                    <button aria-label={`Usuń ${dock}`} onclick={() => {docks.splice(i,1);dockEnabled.splice(i,1)}}><Trash2 size={16}/></button>
+                  </div>
+                {/each}
+              </div>
+              <div class="add-dock">
+                <Input bind:value={newDock} placeholder="Nazwa nowego doku"/>
+                <Button variant="outline" onclick={addDock}><Plus size={16}/>Dodaj dok</Button>
+              </div>
+            </article>
+
+            <article class="settings-card">
+              <div class="settings-head"><div><h2>Standardowe godziny przyjęć</h2><p>Możesz ustawić inne godziny dla każdego dnia.</p></div></div>
+              <div class="hours-list">
+                {#each workDays as row}
+                  <div class:disabled={!row.on}>
+                    <label class="switch"><input type="checkbox" bind:checked={row.on} aria-label={`Dostawy w dniu ${row.day}`}/><span></span></label>
+                    <strong>{row.day}</strong>
+                    {#if row.on}<Input type="time" bind:value={row.from}/><span>do</span><Input type="time" bind:value={row.to}/>{:else}<small>Brak przyjęć</small>{/if}
+                  </div>
+                {/each}
+              </div>
+            </article>
+
+            <article class="settings-card exceptions">
+              <div class="settings-head"><div><h2>Wyjątki w kalendarzu</h2><p>Dni zamknięte lub ze skróconymi godzinami.</p></div><Button variant="outline" size="sm"><Plus size={15}/>Dodaj wyjątek</Button></div>
+              <div class="exception-row"><div class="exception-date"><strong>01</strong><span>MAJ<br/>2025</span></div><div><strong>Święto Pracy</strong><p>Magazyn zamknięty</p></div><Badge variant="secondary">Dzień wyłączony</Badge><button><X size={16}/></button></div>
+              <div class="exception-row"><div class="exception-date"><strong>02</strong><span>MAJ<br/>2025</span></div><div><strong>Skrócony dzień pracy</strong><p>Przyjęcia od 07:00 do 12:00</p></div><Badge variant="outline">Skrócone godziny</Badge><button><X size={16}/></button></div>
+            </article>
+          {:else if configTab === 'fields'}
+            <article class="settings-card">
+              <div class="settings-head"><div><h2>Pola dodatkowe</h2><p>Te dane pojawią się w formularzu awizacji.</p></div><Button size="sm" variant="outline"><Plus size={15}/>Dodaj pole</Button></div>
+              <div class="preference-list">
+                {#each customFields as field}
+                  <div class:disabled={!field.enabled}>
+                    <span class="field-code">{field.name.slice(-1)}</span>
+                    <div><strong>{field.name}</strong><Input bind:value={field.label}/></div>
+                    <label class="switch"><input type="checkbox" bind:checked={field.enabled} aria-label={`Aktywność ${field.name}`}/><span></span></label>
+                    <button aria-label={`Usuń ${field.name}`} onclick={() => customFields.splice(customFields.indexOf(field),1)}><Trash2 size={16}/></button>
+                  </div>
+                {/each}
+              </div>
+            </article>
+          {:else if configTab === 'notifications'}
+            <article class="settings-card">
+              <div class="settings-head"><div><h2>Zdarzenia systemowe</h2><p>Powiadomienia pojawią się w aplikacji.</p></div></div>
+              <div class="preference-list">
+                {#each notifications as notification}
+                  <div class:disabled={!notification.enabled}>
+                    <span class="dock-symbol"><Bell size={17}/></span>
+                    <div><strong>{notification.title}</strong><small>{notification.description}</small></div>
+                    <label class="switch"><input type="checkbox" bind:checked={notification.enabled} aria-label={notification.title}/><span></span></label>
+                  </div>
+                {/each}
+              </div>
+            </article>
+          {:else}
+            <article class="settings-card">
+              <div class="settings-head"><div><h2>Dostęp do systemu</h2><p>Role określają widoczne dane i dostępne akcje.</p></div><Button size="sm"><Plus size={15}/>Dodaj użytkownika</Button></div>
+              <div class="user-list">
+                {#each [{initials:'KM',name:'Kamil Michalski',mail:'k.michalski@dockflow.pl',role:'Administrator'},{initials:'AN',name:'Anna Nowak',mail:'a.nowak@dockflow.pl',role:'Magazynier'},{initials:'PK',name:'Piotr Kowal',mail:'p.kowal@dockflow.pl',role:'Planista'}] as user}
+                  <div><span class="avatar">{user.initials}</span><strong>{user.name}<small>{user.mail}</small></strong><select aria-label={`Rola ${user.name}`}><option>{user.role}</option><option>Administrator</option><option>Magazynier</option><option>Planista</option></select><button aria-label={`Opcje ${user.name}`}><MoreHorizontal size={17}/></button></div>
+                {/each}
+              </div>
+            </article>
+          {/if}
         </section>
       </div>
     </main>
