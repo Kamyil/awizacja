@@ -1,8 +1,15 @@
+import { dev } from '$app/environment';
 import { redirect, type Handle } from '@sveltejs/kit';
 
 type SessionUser = NonNullable<App.Locals['user']>;
 
 export const handle: Handle = async ({ event, resolve }) => {
+  if (!dev && event.url.protocol === 'http:') {
+    const httpsUrl = new URL(event.url);
+    httpsUrl.protocol = 'https:';
+    redirect(308, httpsUrl);
+  }
+
   const encodedSession = event.cookies.get('dockflow_session');
   let user: SessionUser | null = null;
 
