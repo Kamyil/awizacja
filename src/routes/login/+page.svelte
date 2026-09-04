@@ -39,6 +39,6 @@
   </section>
   <aside class="login-visual">
     <div class="gate-lines"></div>
-    <div><span class="eyebrow">MAGAZYN · DOKI · DOSTAWY</span><h2>Jedno miejsce do planowania ruchu na magazynie.</h2><p>Terminy, kolejka dostaw i obsługa rozładunku.</p></div>
+    <div><span class="eyebrow">MAGAZYN · DOKI · DOSTAWY</span><h2>Jedno miejsce do planowania awizacji.</h2><p>Terminy, kolejka dostaw i obsługa rozładunku.</p></div>
   </aside>
 </main>
