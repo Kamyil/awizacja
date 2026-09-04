@@ -498,7 +498,7 @@
                   <div role="gridcell" tabindex="0" aria-label={isHoliday(dayIndex) ? `Święto ${day.date}` : `Wolny termin ${day.date}, ${formatTime(hour)}`} class:closed={isHoliday(dayIndex)} class:drag-target={isDragTarget(dayIndex,hour)} class="time-cell" ondragover={(e)=>moveDeliveryPreview(e,dayIndex,hour)} ondragleave={leaveDeliveryTarget} ondrop={(e)=>dropDelivery(e,dayIndex,hour)}>
                     {#if draggedDelivery && isDragTarget(dayIndex,hour)}
                       <div class={`event drag-preview ${draggedDelivery.color}`} style={`height:${Math.max(30,draggedDelivery.duration*68-4)}px`}>
-                        <span class="event-time">{formatTime(hour)} · <Badge class="dock-badge dock-1">DOK 01</Badge></span><strong>{draggedDelivery.id}</strong><span>{draggedDelivery.supplier}</span>
+                        <span class="event-time">{formatTime(hour)} · <Badge class={`dock-badge ${dockClass(draggedDelivery.dock ?? docks[0])}`}>{draggedDelivery.dock ?? docks[0]}</Badge></span><strong>{draggedDelivery.id}</strong><span>{draggedDelivery.supplier}</span>
                       </div>
                     {/if}
                     {#each deliveries.filter(d => d.day===dayIndex && d.start===hour && visibleDocks[docks.indexOf(d.dock ?? '')]) as item}
