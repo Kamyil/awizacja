@@ -292,7 +292,17 @@
     if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
   }
 
+  function isHoliday(day:number) {
+    return day === 3;
+  }
+
   function moveDeliveryPreview(event: DragEvent, day:number, hour:number, dock?:string) {
+    if (isHoliday(day)) {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+      dragTarget = null;
+      return;
+    }
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
     dragTarget = { day, hour, dock };
@@ -315,6 +325,12 @@
 
   function dropDelivery(event: DragEvent, day:number, hour:number, dock?:string) {
     event.preventDefault();
+    if (isHoliday(day)) {
+      finishDeliveryDrag();
+      toast = 'Nie można zaplanować awizacji w święto lub dzień wolny.';
+      setTimeout(() => toast = '', 3200);
+      return;
+    }
     const id = event.dataTransfer?.getData('text/plain');
     const item = queue.find(x => x.id === id) ?? deliveries.find(x => x.id === id);
     if (!item) return;
@@ -475,11 +491,11 @@
           {#if period === 'Tydzień'}
             <div class="calendar-grid">
               <div class="corner"><Clock3 size={14}/><span>GMT+2</span></div>
-              {#each days as day, index}<div class:closed={index===3} class="day-head"><span>{day.week}</span><strong>{day.date}</strong>{#if index===0}<b>DZIŚ</b>{/if}{#if index===3}<small>ŚWIĘTO</small>{/if}</div>{/each}
+              {#each days as day, index}<div class:closed={isHoliday(index)} class="day-head"><span>{day.week}</span><strong>{day.date}</strong>{#if index===0}<b>DZIŚ</b>{/if}{#if isHoliday(index)}<small>ŚWIĘTO</small>{/if}</div>{/each}
               {#each hours as hour}
                 <div class="time-label">{formatTime(hour)}</div>
                 {#each days as day, dayIndex}
-                  <div role="gridcell" tabindex="0" aria-label={`Wolny termin ${day.date}, ${formatTime(hour)}`} class:closed={dayIndex===3} class:drag-target={isDragTarget(dayIndex,hour)} class="time-cell" ondragover={(e)=>moveDeliveryPreview(e,dayIndex,hour)} ondragleave={leaveDeliveryTarget} ondrop={(e)=>dropDelivery(e,dayIndex,hour)}>
+                  <div role="gridcell" tabindex="0" aria-label={isHoliday(dayIndex) ? `Święto ${day.date}` : `Wolny termin ${day.date}, ${formatTime(hour)}`} class:closed={isHoliday(dayIndex)} class:drag-target={isDragTarget(dayIndex,hour)} class="time-cell" ondragover={(e)=>moveDeliveryPreview(e,dayIndex,hour)} ondragleave={leaveDeliveryTarget} ondrop={(e)=>dropDelivery(e,dayIndex,hour)}>
                     {#if draggedDelivery && isDragTarget(dayIndex,hour)}
                       <div class={`event drag-preview ${draggedDelivery.color}`} style={`height:${Math.max(30,draggedDelivery.duration*68-4)}px`}>
                         <span class="event-time">{formatTime(hour)} · <Badge class="dock-badge dock-1">DOK 01</Badge></span><strong>{draggedDelivery.id}</strong><span>{draggedDelivery.supplier}</span>
