@@ -4,7 +4,7 @@
 	import { type VariantProps, tv } from "tailwind-variants";
 
 	export const buttonVariants = tv({
-		base: "cursor-pointer focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 rounded-[1.125rem] [corner-shape:squircle] border-transparent bg-clip-padding text-sm font-medium focus-visible:ring-3 aria-invalid:ring-3 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap transition-all outline-none select-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 hover:scale-105 duration-150",
+		base: "cursor-pointer gap-x-4 focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 rounded-[1.125rem] [corner-shape:squircle] border-transparent bg-clip-padding text-sm font-medium focus-visible:ring-3 aria-invalid:ring-3 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap transition-all outline-none select-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 hover:scale-105 duration-150",
 		variants: {
 			variant: {
 				default: "bg-[linear-gradient(135deg,var(--primary),color-mix(in_oklch,var(--primary)_88%,black))] text-primary-foreground shadow-sm shadow-primary/20 hover:bg-[linear-gradient(135deg,var(--primary),color-mix(in_oklch,var(--primary)_82%,black))] hover:shadow-primary/30",
@@ -121,7 +121,7 @@
 
 {#snippet content()}
 	<span
-		class="flex items-center justify-center transition-opacity"
+		class="flex items-center justify-center [gap:inherit] transition-opacity"
 		class:invisible={isLoading}
 		class:opacity-50={isLoading}
 		class:blur-sm={isLoading}

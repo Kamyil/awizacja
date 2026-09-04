@@ -35,6 +35,10 @@
   let newDockPreference = $state('Dowolny');
   let cargoDescription = $state('');
   let newAwizationFields = $state<Record<string,string>>({});
+  let newDate = $state('2025-04-30');
+  let newTime = $state('10:00');
+  let newPlate = $state('');
+  let newPallets = $state('');
   let searchDuration = $state('1 godzina');
   let searchFrom = $state('08:00');
   let searchTo = $state('12:00');
@@ -152,6 +156,117 @@
         }
       }
     }
+  }
+
+  function isDockFree(dock:string, day:number, start:number, duration:number, excluded?:Delivery) {
+    return !deliveries.some(item =>
+      item !== excluded &&
+      item.dock === dock &&
+      item.day === day &&
+      item.start !== undefined &&
+      start < item.start + item.duration &&
+      item.start < start + duration
+    );
+  }
+
+  function firstFreeDock(day:number, start:number, duration:number, excluded?:Delivery) {
+    return docks.find((dock, index) =>
+      dockEnabled[index] && isDockFree(dock, day, start, duration, excluded)
+    );
+  }
+
+  function sharesTimeWithAnotherDock(item:Delivery) {
+    if (item.day === undefined || item.start === undefined || !item.dock) return false;
+    return deliveries.some(other =>
+      other !== item &&
+      other.day === item.day &&
+      other.start !== undefined &&
+      other.dock !== item.dock &&
+      item.start! < other.start + other.duration &&
+      other.start < item.start! + item.duration
+    );
+  }
+
+  function changeDeliveryDock(item:Delivery, dock:string) {
+    item.dock = dock;
+    recomputeConflicts();
+    toast = `${item.id} przeniesiono do ${dock}`;
+    setTimeout(() => toast = '', 3200);
+  }
+
+  function resolveSelectedConflict() {
+    if (!selected?.conflictWith) return;
+    const other = deliveries.find(item => item.id === selected?.conflictWith);
+    if (!other) return;
+
+    const selectedIndex = deliveries.indexOf(selected);
+    const otherIndex = deliveries.indexOf(other);
+    const younger = selectedIndex > otherIndex ? selected : other;
+    if (younger.day === undefined || younger.start === undefined) return;
+
+    const freeDock = firstFreeDock(younger.day, younger.start, younger.duration, younger);
+    if (!freeDock) {
+      toast = 'Brak wolnego doku w tym terminie';
+      setTimeout(() => toast = '', 3200);
+      return;
+    }
+
+    younger.dock = freeDock;
+    recomputeConflicts();
+    resolvingConflict = false;
+    toast = `${younger.id} przeniesiono do ${freeDock}. Konflikt rozwiązany.`;
+    setTimeout(() => toast = '', 3200);
+  }
+
+  function createAwization() {
+    const [hour, minute] = newTime.split(':').map(Number);
+    const start = hour + minute / 60;
+    const day = {
+      '2025-04-28':0,
+      '2025-04-29':1,
+      '2025-04-30':2,
+      '2025-05-01':3,
+      '2025-05-02':4
+    }[newDate] ?? 2;
+    const linkedOrder = orderLinked ? queue.find(item => item.id.toUpperCase() === newOrderNumber.trim().toUpperCase()) : undefined;
+    const duration = linkedOrder?.duration ?? 1;
+    const dock = newDockPreference === 'Dowolny'
+      ? firstFreeDock(day, start, duration)
+      : newDockPreference;
+
+    if (!dock) {
+      toast = 'Brak wolnego doku w tym terminie';
+      setTimeout(() => toast = '', 3200);
+      return;
+    }
+
+    const item:Delivery = linkedOrder ?? {
+      id:`AW/${String(deliveries.length + queue.length + 1).padStart(4,'0')}/25`,
+      supplier:newSupplier.trim() || 'Dostawca nieuzupełniony',
+      load:cargoDescription.trim() || 'Brak opisu',
+      pallets:Number(newPallets) || 0,
+      weight:'Do uzupełnienia',
+      duration,
+      status:'Planowany',
+      plate:newPlate.trim() || 'Do uzupełnienia',
+      color:'blue'
+    };
+    item.day = day;
+    item.start = start;
+    item.dock = dock;
+    item.status = 'Planowany';
+    item.color = 'blue';
+    if (newPlate.trim()) item.plate = newPlate.trim();
+    if (newPallets) item.pallets = Number(newPallets);
+    if (cargoDescription.trim()) item.load = cargoDescription.trim();
+
+    if (linkedOrder) queue.splice(queue.indexOf(linkedOrder), 1);
+    deliveries.push(item);
+    recomputeConflicts();
+    addOpen = false;
+    toast = `${item.id} dodano. Przypisany dok: ${dock}`;
+    newDockPreference = 'Dowolny';
+    setTimeout(() => toast = '', 3200);
   }
   recomputeConflicts();
   const queue = $state<Delivery[]>([
@@ -371,7 +486,7 @@
                     {/if}
                     {#each deliveries.filter(d => d.day===dayIndex && d.start===hour && visibleDocks[docks.indexOf(d.dock ?? '')]) as item}
                       {#if role === 'admin'}
-                        <button draggable="true" class={`event ${item.color}`} class:conflict={item.hasConflict} class:dragging={draggedDelivery?.id === item.id} class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} ondragstart={(e) => startDeliveryDrag(e, item)} ondragend={finishDeliveryDrag} onclick={() => {selected=item;resolvingConflict=false}}>
+                        <button draggable="true" class={`event week-event ${dockClass(item.dock)} ${item.color}`} class:split-docks={sharesTimeWithAnotherDock(item)} class:conflict={item.hasConflict} class:dragging={draggedDelivery?.id === item.id} class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} ondragstart={(e) => startDeliveryDrag(e, item)} ondragend={finishDeliveryDrag} onclick={() => {selected=item;resolvingConflict=false}}>
                           <span class="event-time">{formatTime(item.start??hour)} · <Badge class={`dock-badge ${dockClass(item.dock)}`}>{item.dock}</Badge></span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.conflictWith ? `Koliduje z ${item.conflictWith}` : item.plate || 'Brak rejestracji'}</small>{#if item.hasConflict}<CircleAlert size={14} class="alert-icon"/>{/if}
                         </button>
                       {:else}
@@ -574,11 +689,20 @@
       </div>
       {#if resolvingConflict}
         <div class="conflict-resolution">
-          <div><CalendarSearch size={17}/><span><strong>Znajdź wolny slot</strong>Wybierz termin bez kolizji dla tej awizacji.</span></div>
-          <Button size="sm" onclick={() => toast='Wyszukiwanie alternatywnych terminów'}>Zaproponuj inny termin<ArrowRight size={15}/></Button>
+          <div><CalendarSearch size={17}/><span><strong>Wolny dok w tym samym czasie</strong>System przeniesie młodszą awizację i zachowa jej termin.</span></div>
+          <Button size="sm" onclick={resolveSelectedConflict}>Przenieś młodszą awizację<ArrowRight size={15}/></Button>
         </div>
       {/if}
     {/if}
+    <div class="drawer-dock-field">
+      <label for="delivery-dock">Dok</label>
+      <select id="delivery-dock" class="dialog-select" value={selected.dock} onchange={(event) => changeDeliveryDock(selected!, event.currentTarget.value)}>
+        {#each docks as dock, index}
+          {#if dockEnabled[index]}<option value={dock}>{dock}</option>{/if}
+        {/each}
+      </select>
+      <small>Zmiana doku od razu aktualizuje konflikty.</small>
+    </div>
     <div class="drawer-section"><span class="eyebrow">TRANSPORT</span><div class="plate"><Truck size={20}/><div><small>NUMER REJESTRACYJNY</small><strong>{selected.plate}</strong></div></div><div class="info-grid"><div><PackageOpen size={17}/><span>Ładunek<strong>{selected.load}</strong></span></div><div><Weight size={17}/><span>Masa<strong>{selected.weight}</strong></span></div><div><LayoutGrid size={17}/><span>Nośniki<strong>{selected.pallets} palet</strong></span></div><div><ShieldAlert size={17}/><span>Klasa ADR<strong>Nie dotyczy</strong></span></div></div></div>
     <div class="drawer-section">
       <span class="eyebrow">DODATKOWE INFORMACJE</span>
@@ -651,8 +775,8 @@
         </div>
       </label>
       <div class="two-fields">
-        <label>Data<Input type="date" value="2025-04-30"/></label>
-        <label>Godzina<Input type="time" value="10:00"/></label>
+        <label>Data<Input type="date" bind:value={newDate}/></label>
+        <label>Godzina<Input type="time" bind:value={newTime}/></label>
       </div>
       <label>
         Dok
@@ -665,8 +789,8 @@
         <small class="field-hint">System przypisze dostępny dok, jeśli nie wybierzesz konkretnego.</small>
       </label>
       <div class="two-fields">
-        <label>Numer rejestracyjny<Input placeholder="np. PO 1234A"/></label>
-        <label>Liczba palet<Input type="number" placeholder="0"/></label>
+        <label>Numer rejestracyjny<Input bind:value={newPlate} placeholder="np. PO 1234A"/></label>
+        <label>Liczba palet<Input bind:value={newPallets} type="number" placeholder="0"/></label>
       </div>
       <label>
         Opis zawartości
@@ -690,7 +814,7 @@
     </div>
     <Dialog.Footer>
       <Button variant="outline" onclick={() => addOpen=false}>Anuluj</Button>
-      <Button onclick={() => {addOpen=false;toast='Awizacja została dodana'}}>Dodaj awizację</Button>
+      <Button onclick={createAwization}>Dodaj awizację</Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
