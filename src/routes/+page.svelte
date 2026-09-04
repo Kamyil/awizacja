@@ -7,7 +7,7 @@
   import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Clock3, Dock, GripVertical, LayoutGrid, ListFilter, Plus, Search, Settings2, SlidersHorizontal, Truck, UserRound, Warehouse, X, Check, MapPin, Weight, PackageOpen, ShieldAlert, LogOut, Bell, MoreHorizontal, ExternalLink, ArrowRight, CalendarSearch, Trash2 } from '@lucide/svelte';
 
   type View = 'terminarz' | 'dostawca' | 'konfiguracja';
-  type Delivery = { id:string; supplier:string; load:string; pallets:number; weight:string; duration:number; status:string; plate:string; dock?:string; day?:number; start?:number; color:string; erpStatus?:string; orderDate?:string; lines?:Array<{code:string;name:string;quantity:string;delivery:string}>; conflictSide?:'left'|'right'; conflictWith?:string };
+  type Delivery = { id:string; supplier:string; load:string; pallets:number; weight:string; duration:number; status:string; plate:string; dock?:string; day?:number; start?:number; color:string; erpStatus?:string; orderDate?:string; lines?:Array<{code:string;name:string;quantity:string;delivery:string}>; hasConflict?:boolean; conflictSide?:'left'|'right'; conflictWith?:string };
   type SupplierSlot = { key:string; d:string; n:string; m:string; dateLabel:string; time:string; dock:string; start:number; day:number };
 
   let { data }: { data: { user: { login:string; name:string; role:'admin'|'supplier' } } } = $props();
@@ -41,6 +41,8 @@
   let searchDone = $state(false);
   let selectedOrder = $state('ZG/0462/25');
   let slotResults = $state<SupplierSlot[]>([]);
+  let draggedDelivery: Delivery | null = $state(null);
+  let dragTarget = $state<{ day:number; hour:number; dock?:string } | null>(null);
   let pendingSlot = $state<SupplierSlot | null>(null);
   let bookingOpen = $state(false);
   let supplierDeliveries = $state<Delivery[]>([]);
@@ -119,11 +121,39 @@
     { id:'ZG/0450/25', supplier:'NordSteel Sp. z o.o.', load:'Blacha zimnowalcowana', pallets:8, weight:'12 400 kg', duration:2, status:'Planowany', plate:'WGM 4K92', dock:'DOK 01', day:0, start:8, color:'blue' },
     { id:'ZG/0441/25', supplier:'Polimer SA', load:'Granulat PA6', pallets:14, weight:'8 200 kg', duration:1.5, status:'W trakcie rozładunku', plate:'PO 8N220', dock:'DOK 02', day:0, start:10.5, color:'green' },
     { id:'ZZ/0198/25', supplier:'Logistar GmbH', load:'Komponenty montażowe', pallets:5, weight:'3 850 kg', duration:1, status:'Oczekujący', plate:'B-QL 774', dock:'DOK 03', day:1, start:7.5, color:'amber' },
-    { id:'ZG/0427/25', supplier:'Stalmet S.A.', load:'Profile aluminiowe', pallets:12, weight:'9 700 kg', duration:2, status:'Konflikt', plate:'SK 92LT', dock:'DOK 01', day:2, start:11, color:'red', conflictSide:'left', conflictWith:'ZZ/0204/25' },
-    { id:'ZZ/0204/25', supplier:'AluTrade GmbH', load:'Formatki aluminiowe', pallets:7, weight:'5 900 kg', duration:1.5, status:'Konflikt', plate:'B-AT 204', dock:'DOK 01', day:2, start:11, color:'red', conflictSide:'right', conflictWith:'ZG/0427/25' },
+    { id:'ZG/0427/25', supplier:'Stalmet S.A.', load:'Profile aluminiowe', pallets:12, weight:'9 700 kg', duration:2, status:'Planowany', plate:'SK 92LT', dock:'DOK 01', day:2, start:11, color:'blue' },
+    { id:'ZZ/0204/25', supplier:'AluTrade GmbH', load:'Formatki aluminiowe', pallets:7, weight:'5 900 kg', duration:1.5, status:'Planowany', plate:'B-AT 204', dock:'DOK 01', day:2, start:11, color:'blue' },
     { id:'ZG/0409/25', supplier:'Chemiko Sp. z o.o.', load:'Środki techniczne', pallets:4, weight:'2 100 kg', duration:1, status:'Opóźniony', plate:'KR 7PY42', dock:'DOK 02', day:4, start:9, color:'orange' },
     { id:'ZG/0398/25', supplier:'Metalform', load:'Odlewy żeliwne', pallets:10, weight:'11 300 kg', duration:1.5, status:'Zakończony', plate:'DW 3E129', dock:'DOK 03', day:1, start:13, color:'slate' }
   ]);
+  function recomputeConflicts() {
+    for (const delivery of deliveries) {
+      delivery.hasConflict = false;
+      delivery.conflictWith = undefined;
+      delivery.conflictSide = undefined;
+    }
+
+    for (let leftIndex = 0; leftIndex < deliveries.length; leftIndex += 1) {
+      const left = deliveries[leftIndex];
+      if (left.day === undefined || left.start === undefined || !left.dock) continue;
+
+      for (let rightIndex = leftIndex + 1; rightIndex < deliveries.length; rightIndex += 1) {
+        const right = deliveries[rightIndex];
+        if (right.day !== left.day || right.dock !== left.dock || right.start === undefined) continue;
+        if (left.start >= right.start + right.duration || right.start >= left.start + left.duration) continue;
+
+        left.hasConflict = true;
+        right.hasConflict = true;
+        left.conflictWith ??= right.id;
+        right.conflictWith ??= left.id;
+        if (left.start === right.start) {
+          left.conflictSide ??= 'left';
+          right.conflictSide ??= 'right';
+        }
+      }
+    }
+  }
+  recomputeConflicts();
   const queue = $state<Delivery[]>([
     { id:'ZG/0462/25', supplier:'Hutmen S.A.', load:'Pręty miedziane', pallets:6, weight:'7 200 kg', duration:2, status:'Oczekujący', plate:'', color:'violet', erpStatus:'Potwierdzone', orderDate:'24.04.2025', lines:[{code:'MIE-PR-20',name:'Pręt miedziany Cu-ETP Ø20',quantity:'3 200 kg',delivery:'29.04.2025'},{code:'MIE-PR-35',name:'Pręt miedziany Cu-ETP Ø35',quantity:'4 000 kg',delivery:'29.04.2025'}] },
     { id:'ZG/0467/25', supplier:'TechnoParts', load:'Podzespoły', pallets:3, weight:'1 850 kg', duration:1, status:'Oczekujący', plate:'', color:'teal', erpStatus:'W realizacji', orderDate:'25.04.2025', lines:[{code:'TP-88410',name:'Zespół łożyskowy A14',quantity:'240 szt.',delivery:'30.04.2025'},{code:'TP-11802',name:'Obudowa przekładni P8',quantity:'80 szt.',delivery:'30.04.2025'}] },
@@ -141,15 +171,49 @@
   }
   let resultDays = $derived(Array.from(new Map(slotResults.map(slot => [slot.dateLabel,{d:slot.d,n:slot.n,m:slot.m,dateLabel:slot.dateLabel}])).values()));
 
-  function dropDelivery(event: DragEvent, day:number, hour:number) {
+  function startDeliveryDrag(event: DragEvent, item: Delivery) {
+    draggedDelivery = item;
+    event.dataTransfer?.setData('text/plain', item.id);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  }
+
+  function moveDeliveryPreview(event: DragEvent, day:number, hour:number, dock?:string) {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    dragTarget = { day, hour, dock };
+  }
+
+  function leaveDeliveryTarget(event: DragEvent) {
+    const next = event.relatedTarget;
+    if (next instanceof Node && event.currentTarget instanceof Node && event.currentTarget.contains(next)) return;
+    dragTarget = null;
+  }
+
+  function finishDeliveryDrag() {
+    draggedDelivery = null;
+    dragTarget = null;
+  }
+
+  function isDragTarget(day:number, hour:number, dock?:string) {
+    return dragTarget?.day === day && dragTarget.hour === hour && dragTarget.dock === dock;
+  }
+
+  function dropDelivery(event: DragEvent, day:number, hour:number, dock = 'DOK 01') {
     event.preventDefault();
     const id = event.dataTransfer?.getData('text/plain');
-    const item = queue.find(x => x.id === id);
+    const item = queue.find(x => x.id === id) ?? deliveries.find(x => x.id === id);
     if (!item) return;
-    item.day = day; item.start = hour; item.dock = 'DOK 01'; item.status = 'Planowany'; item.color = 'blue';
-    queue.splice(queue.indexOf(item), 1);
-    deliveries.push(item);
-    toast = `${item.id} zaplanowano na ${days[day].date}, ${hour}:00`;
+    const queued = queue.includes(item);
+    item.day = day; item.start = hour; item.dock = dock;
+    if (queued) {
+      item.status = 'Planowany';
+      item.color = 'blue';
+      queue.splice(queue.indexOf(item), 1);
+      deliveries.push(item);
+    }
+    recomputeConflicts();
+    finishDeliveryDrag();
+    toast = `${item.id} zaplanowano na ${days[day].date}, ${formatTime(hour)}`;
     setTimeout(() => toast = '', 3200);
   }
   function advanceStatus(item:Delivery) {
@@ -250,7 +314,7 @@
         <div class="queue-filters"><button class="selected">Wszystkie <span>{queue.length}</span></button><button>ZG <span>2</span></button><button>ZZ <span>1</span></button><button aria-label="Filtry"><ListFilter size={15}/></button></div>
         <div class="queue-list">
           {#each filteredQueue as item}
-            <button class="queue-card" draggable="true" ondragstart={(e) => e.dataTransfer?.setData('text/plain', item.id)} onclick={() => {selectedOrderDocument=item;orderOpen=true}}>
+              <button class="queue-card" class:dragging={draggedDelivery?.id === item.id} draggable="true" ondragstart={(e) => startDeliveryDrag(e, item)} ondragend={finishDeliveryDrag} onclick={() => {selectedOrderDocument=item;orderOpen=true}}>
               <GripVertical size={17} class="grip"/>
               <div class="queue-content">
                 <div class="queue-top"><span class="doc-id">{item.id}</span><span class="duration"><Clock3 size={12}/>{item.duration} h</span></div>
@@ -299,11 +363,16 @@
               {#each hours as hour}
                 <div class="time-label">{formatTime(hour)}</div>
                 {#each days as day, dayIndex}
-                  <div role="gridcell" tabindex="0" aria-label={`Wolny termin ${day.date}, ${formatTime(hour)}`} class:closed={dayIndex===3} class="time-cell" ondragover={(e)=>e.preventDefault()} ondrop={(e)=>dropDelivery(e,dayIndex,hour)}>
+                  <div role="gridcell" tabindex="0" aria-label={`Wolny termin ${day.date}, ${formatTime(hour)}`} class:closed={dayIndex===3} class:drag-target={isDragTarget(dayIndex,hour)} class="time-cell" ondragover={(e)=>moveDeliveryPreview(e,dayIndex,hour)} ondragleave={leaveDeliveryTarget} ondrop={(e)=>dropDelivery(e,dayIndex,hour)}>
+                    {#if draggedDelivery && isDragTarget(dayIndex,hour)}
+                      <div class={`event drag-preview ${draggedDelivery.color}`} style={`height:${Math.max(30,draggedDelivery.duration*68-4)}px`}>
+                        <span class="event-time">{formatTime(hour)} · <Badge class="dock-badge dock-1">DOK 01</Badge></span><strong>{draggedDelivery.id}</strong><span>{draggedDelivery.supplier}</span>
+                      </div>
+                    {/if}
                     {#each deliveries.filter(d => d.day===dayIndex && d.start===hour && visibleDocks[docks.indexOf(d.dock ?? '')]) as item}
                       {#if role === 'admin'}
-                        <button class={`event ${item.color}`} class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => {selected=item;resolvingConflict=false}}>
-                          <span class="event-time">{formatTime(item.start??hour)} · <Badge class={`dock-badge ${dockClass(item.dock)}`}>{item.dock}</Badge></span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.conflictWith ? `Koliduje z ${item.conflictWith}` : item.plate || 'Brak rejestracji'}</small>{#if item.status==='Konflikt'}<CircleAlert size={14} class="alert-icon"/>{/if}
+                        <button draggable="true" class={`event ${item.color}`} class:conflict={item.hasConflict} class:dragging={draggedDelivery?.id === item.id} class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} ondragstart={(e) => startDeliveryDrag(e, item)} ondragend={finishDeliveryDrag} onclick={() => {selected=item;resolvingConflict=false}}>
+                          <span class="event-time">{formatTime(item.start??hour)} · <Badge class={`dock-badge ${dockClass(item.dock)}`}>{item.dock}</Badge></span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.conflictWith ? `Koliduje z ${item.conflictWith}` : item.plate || 'Brak rejestracji'}</small>{#if item.hasConflict}<CircleAlert size={14} class="alert-icon"/>{/if}
                         </button>
                       {:else}
                         <div class={`event private-event ${dockClass(item.dock)}`} class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} aria-label="Termin zajęty"><span class="event-time">{formatTime(item.start??hour)} · <Badge class={`dock-badge ${dockClass(item.dock)}`}>{item.dock}</Badge></span><strong>Termin zajęty</strong><span>Szczegóły ukryte</span></div>
@@ -320,11 +389,16 @@
               {#each hours as hour}
                 <div class="time-label">{formatTime(hour)}</div>
                 {#each docks as dock, dockIndex}
-                  <div role="gridcell" tabindex="0" aria-label={`${dock}, ${formatTime(hour)}`} class:closed={!dockEnabled[dockIndex]} class="time-cell" ondragover={(e)=>e.preventDefault()} ondrop={(e)=>dropDelivery(e,0,hour)}>
+                  <div role="gridcell" tabindex="0" aria-label={`${dock}, ${formatTime(hour)}`} class:closed={!dockEnabled[dockIndex]} class:drag-target={isDragTarget(0,hour,dock)} class="time-cell" ondragover={(e)=>moveDeliveryPreview(e,0,hour,dock)} ondragleave={leaveDeliveryTarget} ondrop={(e)=>dropDelivery(e,0,hour,dock)}>
+                    {#if draggedDelivery && isDragTarget(0,hour,dock)}
+                      <div class={`event drag-preview ${dockClass(dock)}`} style={`height:${Math.max(30,draggedDelivery.duration*68-4)}px`}>
+                        <span class="event-time">{formatTime(hour)} · <Badge class={`dock-badge ${dockClass(dock)}`}>{dock}</Badge></span><strong>{draggedDelivery.id}</strong><span>{draggedDelivery.supplier}</span>
+                      </div>
+                    {/if}
                     {#each deliveries.filter(d => d.day===0 && d.dock===dock && d.start===hour) as item}
                       {#if role === 'admin'}
-                        <button class={`event ${item.color}`} style={`height:${Math.max(30,item.duration*68-4)}px`} onclick={() => {selected=item;resolvingConflict=false}}>
-                          <span class="event-time">{formatTime(item.start??hour)} · <Badge class={`dock-badge ${dockClass(item.dock)}`}>{item.dock}</Badge></span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.plate}</small>
+                        <button draggable="true" class={`event ${item.color}`} class:conflict={item.hasConflict} class:dragging={draggedDelivery?.id === item.id} class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} ondragstart={(e) => startDeliveryDrag(e, item)} ondragend={finishDeliveryDrag} onclick={() => {selected=item;resolvingConflict=false}}>
+                          <span class="event-time">{formatTime(item.start??hour)} · <Badge class={`dock-badge ${dockClass(item.dock)}`}>{item.dock}</Badge></span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.conflictWith ? `Koliduje z ${item.conflictWith}` : item.plate}</small>{#if item.hasConflict}<CircleAlert size={14} class="alert-icon"/>{/if}
                         </button>
                       {:else}
                         <div class={`event private-event ${dockClass(item.dock)}`} style={`height:${Math.max(30,item.duration*68-4)}px`} aria-label="Termin zajęty"><span class="event-time">{formatTime(item.start??hour)}</span><strong>Termin zajęty</strong><span>Szczegóły ukryte</span></div>
@@ -489,8 +563,8 @@
   <div class="drawer-backdrop" role="presentation" onclick={() => selected=null}></div>
   <aside class="detail-drawer">
     <div class="drawer-head"><div><Badge variant="outline">{selected.dock}</Badge><h2>{selected.id}</h2><p>{selected.supplier}</p></div><button onclick={() => selected=null}><X size={20}/></button></div>
-    <div class="status-banner {selected.color}"><span><i></i>{selected.status}</span><small>{days[selected.day??0].date} · {selected.start}:00–{(selected.start??0)+selected.duration}:00</small></div>
-    {#if selected.conflictWith}
+    <div class="status-banner {selected.hasConflict ? 'red' : selected.color}"><span><i></i>{selected.hasConflict ? 'Konflikt' : selected.status}</span><small>{days[selected.day??0].date} · {selected.start}:00–{(selected.start??0)+selected.duration}:00</small></div>
+    {#if selected.hasConflict}
       <div class="conflict-notice">
         <CircleAlert size={17}/>
         <span><strong>Ten sam dok i czas</strong>Koliduje z awizacją {selected.conflictWith}.</span>
