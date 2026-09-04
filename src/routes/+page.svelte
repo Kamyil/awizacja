@@ -31,6 +31,8 @@
   let newOrderNumber = $state('');
   let newSupplier = $state('');
   let orderLinked = $state(false);
+  let supplierSuggestionsOpen = $state(false);
+  let newDockPreference = $state('Dowolny');
   let cargoDescription = $state('');
   let newAwizationFields = $state<Record<string,string>>({});
   let searchDuration = $state('1 godzina');
@@ -129,6 +131,14 @@
   ]);
 
   let filteredQueue = $derived(queue.filter(x => (x.id + x.supplier + x.load).toLowerCase().includes(query.toLowerCase())));
+  let supplierNames = $derived([...new Set([...queue, ...deliveries].map(item => item.supplier))]);
+  let supplierSuggestions = $derived(
+    supplierNames.filter(name => name.toLocaleLowerCase('pl').includes(newSupplier.trim().toLocaleLowerCase('pl')))
+  );
+  function selectSupplier(name: string) {
+    newSupplier = name;
+    supplierSuggestionsOpen = false;
+  }
   let resultDays = $derived(Array.from(new Map(slotResults.map(slot => [slot.dateLabel,{d:slot.d,n:slot.n,m:slot.m,dateLabel:slot.dateLabel}])).values()));
 
   function dropDelivery(event: DragEvent, day:number, hour:number) {
@@ -528,12 +538,58 @@
       </label>
       <label>
         Dostawca
-        <Input bind:value={newSupplier} placeholder="Nazwa firmy" readonly={orderLinked}/>
+        <div class="supplier-combobox">
+          <Input
+            bind:value={newSupplier}
+            placeholder="Zacznij wpisywać nazwę firmy"
+            readonly={orderLinked}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={supplierSuggestionsOpen && supplierSuggestions.length > 0}
+            aria-controls="supplier-suggestions"
+            onfocus={() => supplierSuggestionsOpen = !orderLinked}
+            oninput={() => supplierSuggestionsOpen = !orderLinked}
+            onkeydown={(event) => {
+              if (event.key === 'Escape') supplierSuggestionsOpen = false;
+              if (event.key === 'Enter' && supplierSuggestionsOpen && supplierSuggestions[0]) {
+                event.preventDefault();
+                selectSupplier(supplierSuggestions[0]);
+              }
+            }}
+            onblur={() => supplierSuggestionsOpen = false}
+          />
+          {#if supplierSuggestionsOpen && supplierSuggestions.length > 0}
+            <div id="supplier-suggestions" class="supplier-suggestions" role="listbox" aria-label="Dostawcy">
+              {#each supplierSuggestions as supplier}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={newSupplier === supplier}
+                  onpointerdown={(event) => event.preventDefault()}
+                  onclick={() => selectSupplier(supplier)}
+                >
+                  <span>{supplier}</span>
+                  <small>Znany dostawca</small>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </label>
       <div class="two-fields">
         <label>Data<Input type="date" value="2025-04-30"/></label>
         <label>Godzina<Input type="time" value="10:00"/></label>
       </div>
+      <label>
+        Dok
+        <select class="dialog-select" bind:value={newDockPreference}>
+          <option>Dowolny</option>
+          {#each docks as dock}
+            <option>{dock}</option>
+          {/each}
+        </select>
+        <small class="field-hint">System przypisze dostępny dok, jeśli nie wybierzesz konkretnego.</small>
+      </label>
       <div class="two-fields">
         <label>Numer rejestracyjny<Input placeholder="np. PO 1234A"/></label>
         <label>Liczba palet<Input type="number" placeholder="0"/></label>
