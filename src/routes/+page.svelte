@@ -313,13 +313,14 @@
     return dragTarget?.day === day && dragTarget.hour === hour && dragTarget.dock === dock;
   }
 
-  function dropDelivery(event: DragEvent, day:number, hour:number, dock = 'DOK 01') {
+  function dropDelivery(event: DragEvent, day:number, hour:number, dock?:string) {
     event.preventDefault();
     const id = event.dataTransfer?.getData('text/plain');
     const item = queue.find(x => x.id === id) ?? deliveries.find(x => x.id === id);
     if (!item) return;
     const queued = queue.includes(item);
-    item.day = day; item.start = hour; item.dock = dock;
+    const targetDock = dock ?? (queued ? firstFreeDock(day, hour, item.duration, item) : item.dock) ?? docks[0];
+    item.day = day; item.start = hour; item.dock = targetDock;
     if (queued) {
       item.status = 'Planowany';
       item.color = 'blue';
