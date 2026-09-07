@@ -4,10 +4,11 @@
   import { Input } from '$lib/components/ui/input';
   import { Textarea } from '$lib/components/ui/textarea';
   import * as Dialog from '$lib/components/ui/dialog';
-  import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Clock3, Dock, GripVertical, LayoutGrid, ListFilter, Plus, Search, Settings2, SlidersHorizontal, Truck, UserRound, Warehouse, X, Check, MapPin, Weight, PackageOpen, ShieldAlert, LogOut, Bell, MoreHorizontal, ExternalLink, ArrowRight, CalendarSearch, Trash2 } from '@lucide/svelte';
+  import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Clock3, Dock, GripVertical, LayoutGrid, ListFilter, Plus, Search, Settings2, SlidersHorizontal, Truck, UserRound, Warehouse, X, Check, MapPin, Weight, PackageOpen, ShieldAlert, LogOut, Bell, MoreHorizontal, ExternalLink, ArrowRight, CalendarSearch, Trash2, Building2 } from '@lucide/svelte';
 
   type View = 'terminarz' | 'dostawca' | 'konfiguracja';
-  type Delivery = { id:string; supplier:string; load:string; pallets:number; weight:string; duration:number; status:string; plate:string; dock?:string; day?:number; start?:number; color:string; erpStatus?:string; orderDate?:string; lines?:Array<{code:string;name:string;quantity:string;delivery:string}>; hasConflict?:boolean; conflictSide?:'left'|'right'; conflictWith?:string };
+  type Branch = { id:string; name:string; address:string; docks:string[]; dockEnabled:boolean[]; workDays:Array<{day:string;from:string;to:string;on:boolean}> };
+  type Delivery = { id:string; supplier:string; load:string; pallets:number; weight:string; duration:number; status:string; plate:string; dock?:string; day?:number; start?:number; color:string; branchId?:string; erpStatus?:string; orderDate?:string; lines?:Array<{code:string;name:string;quantity:string;delivery:string}>; hasConflict?:boolean; conflictSide?:'left'|'right'; conflictWith?:string };
   type SupplierSlot = { key:string; d:string; n:string; m:string; dateLabel:string; time:string; dock:string; start:number; day:number };
 
   let { data }: { data: { user: { login:string; name:string; role:'admin'|'supplier' } } } = $props();
@@ -17,10 +18,6 @@
   let dockFilter = $state('Wszystkie doki');
   let dockMenuOpen = $state(false);
   let visibleDocks = $state([true, true, true]);
-
-  function showAllDocks() {
-    visibleDocks = docks.map(() => true);
-  }
   let query = $state('');
   let selected: Delivery | null = $state(null);
   let selectedOrderDocument: Delivery | null = $state(null);
@@ -50,7 +47,57 @@
   let pendingSlot = $state<SupplierSlot | null>(null);
   let bookingOpen = $state(false);
   let supplierDeliveries = $state<Delivery[]>([]);
-  let configTab = $state<'docks'|'fields'|'notifications'|'users'>('docks');
+  let configTab = $state<'branches'|'docks'|'fields'|'notifications'|'users'>('branches');
+  let activeBranchId = $state('wroclaw');
+  let newBranchName = $state('');
+  let newBranchAddress = $state('');
+  let branches = $state<Branch[]>([
+    {
+      id:'wroclaw',
+      name:'Wrocław · Magazyn centralny',
+      address:'ul. Przemysłowa 18, Wrocław',
+      docks:['DOK 01', 'DOK 02', 'DOK 03'],
+      dockEnabled:[true, true, true],
+      workDays:[
+        {day:'Poniedziałek',from:'07:00',to:'15:00',on:true},
+        {day:'Wtorek',from:'07:00',to:'15:00',on:true},
+        {day:'Środa',from:'07:00',to:'15:00',on:true},
+        {day:'Czwartek',from:'07:00',to:'15:00',on:true},
+        {day:'Piątek',from:'07:00',to:'14:00',on:true},
+        {day:'Sobota',from:'07:00',to:'15:00',on:false},
+        {day:'Niedziela',from:'07:00',to:'15:00',on:false}
+      ]
+    },
+    {
+      id:'poznan',
+      name:'Poznań · Magazyn zachodni',
+      address:'ul. Logistyczna 7, Poznań',
+      docks:['RAMPA 01', 'RAMPA 02'],
+      dockEnabled:[true, true],
+      workDays:[
+        {day:'Poniedziałek',from:'06:00',to:'14:00',on:true},
+        {day:'Wtorek',from:'06:00',to:'14:00',on:true},
+        {day:'Środa',from:'06:00',to:'14:00',on:true},
+        {day:'Czwartek',from:'06:00',to:'14:00',on:true},
+        {day:'Piątek',from:'06:00',to:'13:00',on:true},
+        {day:'Sobota',from:'06:00',to:'12:00',on:true},
+        {day:'Niedziela',from:'06:00',to:'14:00',on:false}
+      ]
+    }
+  ]);
+  let activeBranch = $derived(branches.find(branch => branch.id === activeBranchId) ?? branches[0]);
+  let docks = $derived(activeBranch.docks);
+  let dockEnabled = $derived(activeBranch.dockEnabled);
+  let workDays = $derived(activeBranch.workDays);
+  function showAllDocks() {
+    visibleDocks = docks.map(() => true);
+  }
+  function selectBranch(branchId:string) {
+    activeBranchId = branchId;
+    selected = null;
+    dockMenuOpen = false;
+    visibleDocks = branches.find(branch => branch.id === branchId)?.docks.map(() => true) ?? [];
+  }
   let customFields = $state([
     {name:'Pole A',label:'Numer partii',value:'NS-0425',enabled:true},
     {name:'Pole B',label:'Sposób rozładunku',value:'Rozładunek bokiem',enabled:true},
@@ -70,19 +117,9 @@
     {title:'Zakończenie rozładunku',description:'Po zamknięciu awizacji przez magazyniera.',enabled:false}
   ]);
   let newDock = $state('');
-  let docks = $state(['DOK 01', 'DOK 02', 'DOK 03']);
-  let dockEnabled = $state([true, true, true]);
-  let workDays = $state([
-    {day:'Poniedziałek',from:'07:00',to:'15:00',on:true},
-    {day:'Wtorek',from:'07:00',to:'15:00',on:true},
-    {day:'Środa',from:'07:00',to:'15:00',on:true},
-    {day:'Czwartek',from:'07:00',to:'15:00',on:true},
-    {day:'Piątek',from:'07:00',to:'14:00',on:true},
-    {day:'Sobota',from:'07:00',to:'15:00',on:false},
-    {day:'Niedziela',from:'07:00',to:'15:00',on:false}
-  ]);
   function dockClass(dock?:string) {
-    return dock === 'DOK 02' ? 'dock-2' : dock === 'DOK 03' ? 'dock-3' : 'dock-1';
+    const index = docks.indexOf(dock ?? '');
+    return index === 1 ? 'dock-2' : index === 2 ? 'dock-3' : 'dock-1';
   }
   const monthDays = [
     {n:28,other:true,day:0},{n:29,other:true,day:1},{n:30,other:true,day:2},
@@ -121,15 +158,21 @@
     {key:'05-0930',d:'PN',n:'05',m:'MAJ',dateLabel:'5 MAJ',time:'09:30',dock:'DOK 01',start:9.5,day:7},
     {key:'05-1330',d:'PN',n:'05',m:'MAJ',dateLabel:'5 MAJ',time:'13:30',dock:'DOK 01',start:13.5,day:7}
   ];
-  const deliveries = $state<Delivery[]>([
+  const allDeliveries = $state<Delivery[]>([
     { id:'ZG/0450/25', supplier:'NordSteel Sp. z o.o.', load:'Blacha zimnowalcowana', pallets:8, weight:'12 400 kg', duration:2, status:'Planowany', plate:'WGM 4K92', dock:'DOK 01', day:0, start:8, color:'blue' },
     { id:'ZG/0441/25', supplier:'Polimer SA', load:'Granulat PA6', pallets:14, weight:'8 200 kg', duration:1.5, status:'W trakcie rozładunku', plate:'PO 8N220', dock:'DOK 02', day:0, start:10.5, color:'green' },
     { id:'ZZ/0198/25', supplier:'Logistar GmbH', load:'Komponenty montażowe', pallets:5, weight:'3 850 kg', duration:1, status:'Oczekujący', plate:'B-QL 774', dock:'DOK 03', day:1, start:7.5, color:'amber' },
     { id:'ZG/0427/25', supplier:'Stalmet S.A.', load:'Profile aluminiowe', pallets:12, weight:'9 700 kg', duration:2, status:'Planowany', plate:'SK 92LT', dock:'DOK 01', day:2, start:11, color:'blue' },
     { id:'ZZ/0204/25', supplier:'AluTrade GmbH', load:'Formatki aluminiowe', pallets:7, weight:'5 900 kg', duration:1.5, status:'Planowany', plate:'B-AT 204', dock:'DOK 01', day:2, start:11, color:'blue' },
     { id:'ZG/0409/25', supplier:'Chemiko Sp. z o.o.', load:'Środki techniczne', pallets:4, weight:'2 100 kg', duration:1, status:'Opóźniony', plate:'KR 7PY42', dock:'DOK 02', day:4, start:9, color:'orange' },
-    { id:'ZG/0398/25', supplier:'Metalform', load:'Odlewy żeliwne', pallets:10, weight:'11 300 kg', duration:1.5, status:'Zakończony', plate:'DW 3E129', dock:'DOK 03', day:1, start:13, color:'slate' }
+    { id:'ZG/0398/25', supplier:'Metalform', load:'Odlewy żeliwne', pallets:10, weight:'11 300 kg', duration:1.5, status:'Zakończony', plate:'DW 3E129', dock:'DOK 03', day:1, start:13, color:'slate' },
+    { id:'ZG/0512/25', supplier:'Solaris Bus & Coach', load:'Podzespoły karoserii', pallets:9, weight:'6 800 kg', duration:1.5, status:'W trakcie rozładunku', plate:'PO 4L812', dock:'RAMPA 01', day:0, start:7.5, color:'green', branchId:'poznan' },
+    { id:'ZZ/0231/25', supplier:'Hempel Polska', load:'Farby przemysłowe', pallets:6, weight:'3 200 kg', duration:1, status:'Planowany', plate:'GDA 8K41', dock:'RAMPA 02', day:0, start:10, color:'blue', branchId:'poznan' },
+    { id:'ZG/0520/25', supplier:'Bridgestone Poznań', load:'Opony do pojazdów ciężarowych', pallets:16, weight:'8 900 kg', duration:2, status:'Oczekujący', plate:'PZ 921FM', dock:'RAMPA 01', day:1, start:9, color:'amber', branchId:'poznan' },
+    { id:'ZG/0507/25', supplier:'Volkswagen Poznań', load:'Komponenty montażowe', pallets:12, weight:'5 450 kg', duration:1.5, status:'Planowany', plate:'PO 7X533', dock:'RAMPA 02', day:2, start:11.5, color:'blue', branchId:'poznan' },
+    { id:'ZZ/0224/25', supplier:'DHL Supply Chain', load:'Opakowania zwrotne', pallets:20, weight:'4 100 kg', duration:1, status:'Opóźniony', plate:'WGM 2R18', dock:'RAMPA 01', day:4, start:8.5, color:'orange', branchId:'poznan' }
   ]);
+  let deliveries = $derived(allDeliveries.filter(item => (item.branchId ?? 'wroclaw') === activeBranchId));
   function recomputeConflicts() {
     for (const delivery of deliveries) {
       delivery.hasConflict = false;
@@ -254,6 +297,7 @@
     item.day = day;
     item.start = start;
     item.dock = dock;
+    item.branchId = activeBranchId;
     item.status = 'Planowany';
     item.color = 'blue';
     if (newPlate.trim()) item.plate = newPlate.trim();
@@ -261,7 +305,7 @@
     if (cargoDescription.trim()) item.load = cargoDescription.trim();
 
     if (linkedOrder) queue.splice(queue.indexOf(linkedOrder), 1);
-    deliveries.push(item);
+    allDeliveries.push(item);
     recomputeConflicts();
     addOpen = false;
     toast = `${item.id} dodano. Przypisany dok: ${dock}`;
@@ -336,12 +380,13 @@
     if (!item) return;
     const queued = queue.includes(item);
     const targetDock = dock ?? (queued ? firstFreeDock(day, hour, item.duration, item) : item.dock) ?? docks[0];
+    item.branchId = activeBranchId;
     item.day = day; item.start = hour; item.dock = targetDock;
     if (queued) {
       item.status = 'Planowany';
       item.color = 'blue';
       queue.splice(queue.indexOf(item), 1);
-      deliveries.push(item);
+      allDeliveries.push(item);
     }
     recomputeConflicts();
     finishDeliveryDrag();
@@ -402,6 +447,40 @@
     dockEnabled.push(true);
     newDock='';
   }
+  function addBranch() {
+    const name = newBranchName.trim();
+    if (!name) return;
+    const id = `${name.toLocaleLowerCase('pl').replace(/[^a-z0-9ąćęłńóśźż]+/g,'-').replace(/^-|-$/g,'')}-${Date.now()}`;
+    branches.push({
+      id,
+      name,
+      address:newBranchAddress.trim() || 'Adres do uzupełnienia',
+      docks:['DOK 01'],
+      dockEnabled:[true],
+      workDays:[
+        {day:'Poniedziałek',from:'07:00',to:'15:00',on:true},
+        {day:'Wtorek',from:'07:00',to:'15:00',on:true},
+        {day:'Środa',from:'07:00',to:'15:00',on:true},
+        {day:'Czwartek',from:'07:00',to:'15:00',on:true},
+        {day:'Piątek',from:'07:00',to:'15:00',on:true},
+        {day:'Sobota',from:'07:00',to:'15:00',on:false},
+        {day:'Niedziela',from:'07:00',to:'15:00',on:false}
+      ]
+    });
+    selectBranch(id);
+    newBranchName = '';
+    newBranchAddress = '';
+    toast = `Dodano oddział ${name}`;
+    setTimeout(() => toast = '', 3200);
+  }
+
+  function removeBranch(branchId:string) {
+    if (branches.length === 1) return;
+    const index = branches.findIndex(branch => branch.id === branchId);
+    if (index === -1) return;
+    branches.splice(index, 1);
+    if (activeBranchId === branchId) selectBranch(branches[0].id);
+  }
 
   function linkPurchaseOrder() {
     const normalized = newOrderNumber.trim().toUpperCase();
@@ -423,6 +502,11 @@
 <div class="app-shell">
   <header class="topbar">
     <button class="brand" onclick={() => view='terminarz'}><span class="brand-mark"><Dock size={19}/></span><span>DOCK<span>FLOW</span></span></button>
+    <label class="branch-switcher" aria-label="Aktywny oddział">
+      <Building2 size={16}/>
+      <span><small>ODDZIAŁ</small><select value={activeBranchId} onchange={(event) => selectBranch(event.currentTarget.value)}>{#each branches as branch}<option value={branch.id}>{branch.name}</option>{/each}</select></span>
+      <ChevronDown size={14}/>
+    </label>
     <nav aria-label="Główna nawigacja">
       <button class:active={view==='terminarz'} onclick={() => view='terminarz'}><CalendarDays size={17}/>Terminarz</button>
       <button class:active={view==='dostawca'} onclick={() => view='dostawca'}><Truck size={17}/>Panel dostawcy</button>
@@ -463,7 +547,7 @@
 
       <section class="calendar-panel">
         <div class="calendar-toolbar">
-          <div><span class="eyebrow">TERMINARZ DOSTAW</span><h1>28 kwietnia – 2 maja 2025</h1></div>
+          <div><span class="eyebrow">TERMINARZ DOSTAW · {activeBranch.name}</span><h1>28 kwietnia – 2 maja 2025</h1></div>
           <div class="toolbar-actions">
             <div class="segmented">{#each ['Dzień','Tydzień','Miesiąc'] as p}<button class:active={period===p} onclick={() => period=p as typeof period}>{p}</button>{/each}</div>
             <Button class="dock-filter-button" variant="outline" size="sm" onclick={() => dockMenuOpen=!dockMenuOpen}><Dock size={15}/><span>DOKi</span><ChevronDown size={14} class={dockMenuOpen ? 'is-open' : ''}/></Button>
@@ -590,8 +674,8 @@
       <div class="page-title">
         <div>
           <span class="eyebrow">USTAWIENIA TERMINARZA</span>
-          <h1>{configTab === 'docks' ? 'Doki i dostępność' : configTab === 'fields' ? 'Pola awizacji' : configTab === 'notifications' ? 'Powiadomienia' : 'Użytkownicy'}</h1>
-          <p>{configTab === 'docks' ? 'Ustal godziny pracy magazynu i wyłącz dni bez dostaw.' : configTab === 'fields' ? 'Zdecyduj, jakie informacje zbierasz przy awizacji.' : configTab === 'notifications' ? 'Wybierz zdarzenia, o których system ma informować.' : 'Zarządzaj dostępem do terminarza i panelu magazynu.'}</p>
+          <h1>{configTab === 'branches' ? 'Oddziały' : configTab === 'docks' ? 'Doki i dostępność' : configTab === 'fields' ? 'Pola awizacji' : configTab === 'notifications' ? 'Powiadomienia' : 'Użytkownicy'}</h1>
+          <p>{configTab === 'branches' ? 'Każdy oddział ma osobny terminarz, doki i godziny przyjęć.' : configTab === 'docks' ? `Ustawienia dla oddziału ${activeBranch.name}.` : configTab === 'fields' ? 'Zdecyduj, jakie informacje zbierasz przy awizacji.' : configTab === 'notifications' ? 'Wybierz zdarzenia, o których system ma informować.' : 'Zarządzaj dostępem do terminarza i panelu magazynu.'}</p>
         </div>
         <Button onclick={() => toast='Zmiany zapisane'}>
           <Check size={16}/>
@@ -601,6 +685,7 @@
 
       <div class="config-layout">
         <aside class="settings-nav">
+          <button class:active={configTab === 'branches'} onclick={() => configTab='branches'}><Building2 size={17}/>Oddziały</button>
           <button class:active={configTab === 'docks'} onclick={() => configTab='docks'}><Dock size={17}/>Doki i godziny</button>
           <button class:active={configTab === 'fields'} onclick={() => configTab='fields'}><SlidersHorizontal size={17}/>Pola awizacji</button>
           <button class:active={configTab === 'notifications'} onclick={() => configTab='notifications'}><Bell size={17}/>Powiadomienia</button>
@@ -608,7 +693,28 @@
         </aside>
 
         <section class="config-content">
-          {#if configTab === 'docks'}
+          {#if configTab === 'branches'}
+            <article class="settings-card">
+              <div class="settings-head"><div><h2>Oddziały firmy</h2><p>Wybierz oddział, aby przejść do jego terminarza i ustawień doków.</p></div><span>{branches.length} {branches.length === 1 ? 'oddział' : 'oddziały'}</span></div>
+              <div class="branch-list">
+                {#each branches as branch}
+                  <div class:active={branch.id === activeBranchId}>
+                    <button class="branch-main" onclick={() => selectBranch(branch.id)}>
+                      <span class="branch-symbol"><Building2 size={19}/></span>
+                      <span><strong>{branch.name}</strong><small><MapPin size={12}/>{branch.address}</small></span>
+                      <span class="branch-meta">{branch.dockEnabled.filter(Boolean).length} aktywne doki</span>
+                      {#if branch.id === activeBranchId}<Badge>Wybrany</Badge>{:else}<span class="select-branch">Wybierz</span>{/if}
+                    </button>
+                    <button class="branch-remove" aria-label={`Usuń ${branch.name}`} disabled={branches.length === 1} onclick={() => removeBranch(branch.id)}><Trash2 size={16}/></button>
+                  </div>
+                {/each}
+              </div>
+              <div class="add-branch">
+                <div><label>Nazwa oddziału<Input bind:value={newBranchName} placeholder="np. Gdańsk · Terminal północny"/></label><label>Adres<Input bind:value={newBranchAddress} placeholder="ulica, miasto"/></label></div>
+                <Button onclick={addBranch}><Plus size={16}/>Dodaj oddział</Button>
+              </div>
+            </article>
+          {:else if configTab === 'docks'}
             <article class="settings-card">
               <div class="settings-head">
                 <div><h2>Doki rozładunkowe</h2><p>Aktywne doki są dostępne w terminarzu.</p></div>
