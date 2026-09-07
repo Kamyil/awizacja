@@ -599,7 +599,7 @@
               {/each}
             </div>
           {:else if period === 'Dzień'}
-            <div class="day-calendar">
+            <div class="day-calendar" style={`grid-template-columns:60px repeat(${docks.length},minmax(210px,1fr))`}>
               <div class="corner"><Clock3 size={14}/><span>GMT+2</span></div>
               {#each docks as dock, dockIndex}<div class="day-head"><span>DOK</span><strong>{String(dockIndex+1).padStart(2,'0')}</strong><small>{dockEnabled[dockIndex] ? 'AKTYWNY' : 'WYŁĄCZONY'}</small></div>{/each}
               {#each hours as hour}
