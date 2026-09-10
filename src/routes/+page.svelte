@@ -951,7 +951,10 @@
         {/each}
       </div>
     </div>
-    <div class="drawer-footer"><Button variant="outline"><ExternalLink size={15}/>Dokument źródłowy</Button><Button onclick={() => advanceStatus(selected!)}>{#if selected.status==='W trakcie rozładunku'}<LogOut size={16}/>{:else}<Check size={16}/>{/if} {selected.status==='W trakcie rozładunku'?'Zakończ rozładunek':'Potwierdź podjazd auta'}</Button></div>
+    <Dialog.Footer class="sticky bottom-0 z-10 border-t bg-white px-0 py-2">
+      <Button variant="outline"><ExternalLink size={15}/>Dokument źródłowy</Button>
+      <Button onclick={() => advanceStatus(selected!)}>{#if selected.status==='W trakcie rozładunku'}<LogOut size={16}/>{:else}<Check size={16}/>{/if} {selected.status==='W trakcie rozładunku'?'Zakończ rozładunek':'Potwierdź podjazd auta'}</Button>
+    </Dialog.Footer>
     </Dialog.Content>
   </Dialog.Root>
 {/if}
