@@ -837,7 +837,7 @@ button {
 }
 .config-layout {
   display: grid;
-  grid-template-columns: 220px minmax(0, 780px);
+  grid-template-columns: 220px minmax(0, 1100px);
   gap: 24px;
 }
 .settings-nav {
@@ -866,8 +866,58 @@ button {
   flex-direction: column;
   gap: 16px;
 }
+.closure-config {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+}
+.closure-config .closure-builder,
+.closure-config .exceptions {
+  min-width: 0;
+}
+.closure-config .exceptions {
+  height: 586px;
+  overflow-y: auto;
+}
 .settings-card {
   padding: 20px;
+}
+.closure-builder {
+  border-top: 3px solid #1f7568;
+}
+.closure-builder .settings-head {
+  align-items: center;
+}
+.closure-builder .settings-head > svg {
+  color: #1f7568;
+}
+.closure-form {
+  display: grid;
+  gap: 14px;
+  padding-top: 18px;
+}
+.closure-form > label,
+.closure-form .two-fields > label {
+  display: grid;
+  gap: 6px;
+  color: #34484d;
+  font-size: 11px;
+  font-weight: 650;
+}
+.closure-form .two-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.closure-form .input,
+.closure-form input,
+.closure-form .dialog-select {
+  background: #f8faf9;
+  border-color: #cfdad8;
+}
+.closure-form > .button {
+  justify-self: start;
+  margin-top: 2px;
 }
 .settings-head {
   display: flex;
@@ -1266,6 +1316,12 @@ button {
   }
   .settings-nav button {
     white-space: nowrap;
+  }
+  .closure-config {
+    grid-template-columns: 1fr;
+  }
+  .closure-config .exceptions {
+    height: 420px;
   }
   .slot-days {
     grid-template-columns: 1fr 1fr;

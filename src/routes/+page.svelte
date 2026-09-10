@@ -47,7 +47,7 @@
   let pendingSlot = $state<SupplierSlot | null>(null);
   let bookingOpen = $state(false);
   let supplierDeliveries = $state<Delivery[]>([]);
-  let configTab = $state<'branches'|'docks'|'fields'|'notifications'|'users'>('branches');
+  let configTab = $state<'branches'|'docks'|'closures'|'fields'|'notifications'|'users'>('branches');
   let activeBranchId = $state('wroclaw');
   let newBranchName = $state('');
   let newBranchAddress = $state('');
@@ -116,6 +116,34 @@
     {title:'Nowa rezerwacja dostawcy',description:'Gdy dostawca sam wybierze wolny termin.',enabled:true},
     {title:'Zakończenie rozładunku',description:'Po zamknięciu awizacji przez magazyniera.',enabled:false}
   ]);
+  type Closure = { id:number; name:string; scope:'Oddział'|'Dok'; target:string; from:string; to:string; mode:'Cały dzień'|'Godziny'; note:string };
+  let closureName = $state('');
+  let closureScope = $state<'Oddział'|'Dok'>('Oddział');
+  let closureTarget = $state('Wszystkie oddziały');
+  let closureFrom = $state('2025-05-01');
+  let closureTo = $state('2025-05-01');
+  let closureMode = $state<'Cały dzień'|'Godziny'>('Cały dzień');
+  let closureStart = $state('07:00');
+  let closureEnd = $state('15:00');
+  let closures = $state<Closure[]>([
+    {id:1,name:'Święto Pracy',scope:'Oddział',target:'Wszystkie oddziały',from:'2025-05-01',to:'2025-05-01',mode:'Cały dzień',note:'Wszystkie rampy wyłączone'},
+    {id:2,name:'Inwentaryzacja rampy',scope:'Dok',target:'Wrocław · DOK 02',from:'2025-05-05',to:'2025-05-09',mode:'Godziny',note:'Wyłączony zakres 07:00–11:00'}
+  ]);
+  function addClosure() {
+    if (!closureName.trim() || !closureTarget) {
+      toast = 'Uzupełnij nazwę i zakres wyłączenia';
+      return;
+    }
+    closures = [...closures, {id:Date.now(),name:closureName.trim(),scope:closureScope,target:closureTarget,from:closureFrom,to:closureTo,mode:closureMode,note:closureMode === 'Cały dzień' ? 'Cały dzień wyłączony' : `Wyłączony zakres ${closureStart}–${closureEnd}`}];
+    closureName = '';
+    toast = 'Dodano wyłączenie';
+  }
+  function removeClosure(id:number) {
+    closures = closures.filter(closure => closure.id !== id);
+  }
+  function formatClosureDate(value:string) {
+    return new Intl.DateTimeFormat('pl-PL',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(`${value}T12:00:00`)).replace('.', '');
+  }
   let newDock = $state('');
   function dockClass(dock?:string) {
     const index = docks.indexOf(dock ?? '');
@@ -671,8 +699,8 @@
       <div class="page-title"><div><span class="eyebrow">PANEL DOSTAWCY · NORDSTEEL SP. Z O.O.</span><h1>Zaplanuj dostawę</h1><p>Wybierz wolny termin dla potwierdzonego zamówienia.</p></div><Badge variant="outline"><span class="live-dot"></span>Dane aktualne</Badge></div>
       <section class="supplier-layout">
         <aside class="finder-card">
-          <div class="finder-icon"><CalendarSearch size={22}/></div><h2>Znajdź wolny termin</h2><p>Sprawdzimy dostępność doków w ciągu najbliższych 14 dni.</p>
-          <label>Zamówienie<select bind:value={selectedOrder}>{#each supplierOrders as order}<option value={order.id}>{order.label}</option>{/each}</select></label>
+          <h1>Wybierz termin dostawy</h1>
+          <p>Podaj parametry, a pokażemy dostępne okna.</p>
           <label>Minimalne okno czasowe rozładunku<select bind:value={searchDuration}><option>30 minut</option><option>1 godzina</option><option>2 godziny</option><option>4 godziny</option></select></label>
           <div class="two-fields"><label>Najwcześniej<Input type="time" bind:value={searchFrom}/></label><label>Najpóźniej<Input type="time" bind:value={searchTo}/></label></div>
           <Button class="wide" onclick={searchSupplierSlots}><Search size={16}/>Pokaż wolne terminy</Button>
@@ -699,25 +727,22 @@
       <div class="page-title">
         <div>
           <span class="eyebrow">USTAWIENIA TERMINARZA</span>
-          <h1>{configTab === 'branches' ? 'Oddziały' : configTab === 'docks' ? 'Doki i dostępność' : configTab === 'fields' ? 'Pola awizacji' : configTab === 'notifications' ? 'Powiadomienia' : 'Użytkownicy'}</h1>
-          <p>{configTab === 'branches' ? 'Każdy oddział ma osobny terminarz, doki i godziny przyjęć.' : configTab === 'docks' ? `Ustawienia dla oddziału ${activeBranch.name}.` : configTab === 'fields' ? 'Zdecyduj, jakie informacje zbierasz przy awizacji.' : configTab === 'notifications' ? 'Wybierz zdarzenia, o których system ma informować.' : 'Zarządzaj dostępem do terminarza i panelu magazynu.'}</p>
+          <h1>{configTab === 'branches' ? 'Oddziały' : configTab === 'docks' ? 'Doki i dostępność' : configTab === 'closures' ? 'Dni wolne i wyłączenia' : configTab === 'fields' ? 'Pola awizacji' : configTab === 'notifications' ? 'Powiadomienia' : 'Użytkownicy'}</h1>
+          <p>{configTab === 'branches' ? 'Każdy oddział ma osobny terminarz, doki i godziny przyjęć.' : configTab === 'docks' ? `Ustawienia dla oddziału ${activeBranch.name}.` : configTab === 'closures' ? 'Wyłącz całe oddziały, pojedyncze doki albo tylko wybrane godziny.' : configTab === 'fields' ? 'Zdecyduj, jakie informacje zbierasz przy awizacji.' : configTab === 'notifications' ? 'Wybierz zdarzenia, o których system ma informować.' : 'Zarządzaj dostępem do terminarza i panelu magazynu.'}</p>
         </div>
-        <Button onclick={() => toast='Zmiany zapisane'}>
-          <Check size={16}/>
-          Zapisz zmiany
-        </Button>
+        <Button onclick={() => toast='Zmiany zapisane'}><Check size={16}/>Zapisz zmiany</Button>
       </div>
 
       <div class="config-layout">
         <aside class="settings-nav">
           <button class:active={configTab === 'branches'} onclick={() => configTab='branches'}><Building2 size={17}/>Oddziały</button>
           <button class:active={configTab === 'docks'} onclick={() => configTab='docks'}><Dock size={17}/>Doki i godziny</button>
+          <button class:active={configTab === 'closures'} onclick={() => configTab='closures'}><CalendarDays size={17}/>Dni wolne i wyłączenia</button>
           <button class:active={configTab === 'fields'} onclick={() => configTab='fields'}><SlidersHorizontal size={17}/>Pola awizacji</button>
           <button class:active={configTab === 'notifications'} onclick={() => configTab='notifications'}><Bell size={17}/>Powiadomienia</button>
           <button class:active={configTab === 'users'} onclick={() => configTab='users'}><UserRound size={17}/>Użytkownicy</button>
         </aside>
-
-        <section class="config-content">
+        <section class:closure-config={configTab === 'closures'} class="config-content">
           {#if configTab === 'branches'}
             <article class="settings-card">
               <div class="settings-head"><div><h2>Oddziały firmy</h2><p>Wybierz oddział, aby przejść do jego terminarza i ustawień doków.</p></div><span>{branches.length} {branches.length === 1 ? 'oddział' : 'oddziały'}</span></div>
@@ -774,10 +799,23 @@
               </div>
             </article>
 
+          {:else if configTab === 'closures'}
+            <article class="settings-card closure-builder">
+              <div class="settings-head"><div><h2>Nowe dni wolne lub wyłączenie</h2><p>Zastosuj zakres do całego oddziału albo pojedynczego doku.</p></div><CalendarDays size={22}/></div>
+              <div class="closure-form">
+                <label>Nazwa<Input bind:value={closureName} placeholder="np. Święto, serwis rampy"/></label>
+                <div class="two-fields"><label>Zakres<select class="dialog-select" bind:value={closureScope}><option>Oddział</option><option>Dok</option></select></label><label>Obiekt<select class="dialog-select" bind:value={closureTarget}>{#if closureScope === 'Oddział'}<option>Wszystkie oddziały</option>{#each branches as branch}<option>{branch.name}</option>{/each}{:else}{#each branches as branch}{#each branch.docks as dock}<option>{branch.name} · {dock}</option>{/each}{/each}{/if}</select></label></div>
+                <div class="two-fields"><label>Od<Input type="date" bind:value={closureFrom}/></label><label>Do<Input type="date" bind:value={closureTo}/></label></div>
+                <label>Zakres godzin<select class="dialog-select" bind:value={closureMode}><option>Cały dzień</option><option>Godziny</option></select></label>
+                {#if closureMode === 'Godziny'}<div class="two-fields"><label>Od godziny<Input type="time" bind:value={closureStart}/></label><label>Do godziny<Input type="time" bind:value={closureEnd}/></label></div>{/if}
+                <Button onclick={addClosure}><Plus size={16}/>Dodaj do kalendarza</Button>
+              </div>
+            </article>
             <article class="settings-card exceptions">
-              <div class="settings-head"><div><h2>Wyjątki w kalendarzu</h2><p>Dni zamknięte lub ze skróconymi godzinami.</p></div><Button variant="outline" size="sm"><Plus size={15}/>Dodaj wyjątek</Button></div>
-              <div class="exception-row"><div class="exception-date"><strong>01</strong><span>MAJ<br/>2025</span></div><div><strong>Święto Pracy</strong><p>Magazyn zamknięty</p></div><Badge variant="secondary">Dzień wyłączony</Badge><button><X size={16}/></button></div>
-              <div class="exception-row"><div class="exception-date"><strong>02</strong><span>MAJ<br/>2025</span></div><div><strong>Skrócony dzień pracy</strong><p>Przyjęcia od 07:00 do 12:00</p></div><Badge variant="outline">Skrócone godziny</Badge><button><X size={16}/></button></div>
+              <div class="settings-head"><div><h2>Aktywne dni wolne i wyłączenia</h2><p>Reguły działają na całe dni, tygodnie lub wybrane godziny.</p></div><span>{closures.length} {closures.length === 1 ? 'reguła' : 'reguły'}</span></div>
+              {#each closures as closure}
+                <div class="exception-row"><div class="exception-date"><strong>{new Date(`${closure.from}T12:00:00`).getDate()}</strong><span>{formatClosureDate(closure.from)}{#if closure.to !== closure.from}<br/>do {formatClosureDate(closure.to)}{/if}</span></div><div><strong>{closure.name}</strong><p>{closure.target} · {closure.note}</p></div><Badge variant={closure.mode === 'Cały dzień' ? 'secondary' : 'outline'}>{closure.mode}</Badge><button aria-label={`Usuń ${closure.name}`} onclick={() => removeClosure(closure.id)}><Trash2 size={16}/></button></div>
+              {/each}
             </article>
           {:else if configTab === 'fields'}
             <article class="settings-card">
