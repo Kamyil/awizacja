@@ -46,6 +46,7 @@
   let dragTarget = $state<{ day:number; hour:number; dock?:string } | null>(null);
   let pendingSlot = $state<SupplierSlot | null>(null);
   let bookingOpen = $state(false);
+  let pendingSchedule = $state<{ item:Delivery; day:number; start:number; dock:string } | null>(null);
   let supplierDeliveries = $state<Delivery[]>([]);
   let configTab = $state<'branches'|'docks'|'closures'|'fields'|'notifications'|'users'>('branches');
   let activeBranchId = $state('wroclaw');
@@ -306,6 +307,30 @@
       setTimeout(() => toast = '', 3200);
       return;
     }
+    if (pendingSchedule) {
+      const { item, day, start, dock } = pendingSchedule;
+      item.day = day;
+      item.start = start;
+      item.dock = dock;
+      item.branchId = activeBranchId;
+      item.status = 'Planowany';
+      item.color = 'blue';
+      if (newPlate.trim()) item.plate = newPlate.trim();
+      if (newPallets) item.pallets = Number(newPallets);
+      if (cargoDescription.trim()) item.load = cargoDescription.trim();
+      for (const field of customFields) {
+        if (field.enabled && newAwizationFields[field.name] !== undefined) field.value = newAwizationFields[field.name];
+      }
+      queue.splice(queue.indexOf(item), 1);
+      allDeliveries.push(item);
+      pendingSchedule = null;
+      addOpen = false;
+      recomputeConflicts();
+      toast = `${item.id} zaplanowano na ${days[day].date}, ${formatTime(start)}`;
+      setTimeout(() => toast = '', 3200);
+      return;
+    }
+
 
     const [hour, minute] = newTime.split(':').map(Number);
     const start = hour + minute / 60;
@@ -425,14 +450,28 @@
     if (!item) return;
     const queued = queue.includes(item);
     const targetDock = dock ?? (queued ? firstFreeDock(day, hour, item.duration, item) : item.dock) ?? docks[0];
+    if (queued) {
+      if (!targetDock) {
+        finishDeliveryDrag();
+        toast = 'Brak wolnego doku w tym terminie';
+        setTimeout(() => toast = '', 3200);
+        return;
+      }
+      pendingSchedule = { item, day, start: hour, dock: targetDock };
+      newSupplier = item.supplier;
+      cargoDescription = item.load;
+      newPlate = item.plate;
+      newPallets = String(item.pallets);
+      newDate = ['2025-04-28','2025-04-29','2025-04-30','2025-05-01','2025-05-02'][day] ?? '2025-04-30';
+      newTime = formatTime(hour);
+      newDockPreference = targetDock;
+      newAwizationFields = Object.fromEntries(customFields.map(field => [field.name, field.value]));
+      addOpen = true;
+      finishDeliveryDrag();
+      return;
+    }
     item.branchId = activeBranchId;
     item.day = day; item.start = hour; item.dock = targetDock;
-    if (queued) {
-      item.status = 'Planowany';
-      item.color = 'blue';
-      queue.splice(queue.indexOf(item), 1);
-      allDeliveries.push(item);
-    }
     recomputeConflicts();
     finishDeliveryDrag();
     toast = `${item.id} zaplanowano na ${days[day].date}, ${formatTime(hour)}`;
@@ -918,8 +957,8 @@
 <Dialog.Root bind:open={addOpen}>
   <Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
     <Dialog.Header>
-      <Dialog.Title>Nowa awizacja</Dialog.Title>
-      <Dialog.Description>Powiąż zamówienie z ImpulsERP albo wpisz dane ręcznie.</Dialog.Description>
+      <Dialog.Title>{pendingSchedule ? 'Uzupełnij dane awizacji' : 'Nowa awizacja'}</Dialog.Title>
+      <Dialog.Description>{pendingSchedule ? `Awizacja ${pendingSchedule.item.id} wymaga danych przed dodaniem do terminarza.` : 'Powiąż zamówienie z ImpulsERP albo wpisz dane ręcznie.'}</Dialog.Description>
     </Dialog.Header>
     <div class="dialog-form">
       <label>
@@ -1015,8 +1054,8 @@
       </details>
     </div>
     <Dialog.Footer>
-      <Button variant="outline" onclick={() => addOpen=false}>Anuluj</Button>
-      <Button onclick={createAwization}>Dodaj awizację</Button>
+      <Button variant="outline" onclick={() => { addOpen=false; pendingSchedule=null; }}>Anuluj</Button>
+      <Button onclick={createAwization}>{pendingSchedule ? 'Zapisz i zaplanuj' : 'Dodaj awizację'}</Button>
     </Dialog.Footer>
   </Dialog.Content>
 </Dialog.Root>
