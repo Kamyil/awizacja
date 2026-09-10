@@ -13,6 +13,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   const encodedSession = event.cookies.get('dockflow_session');
   let user: SessionUser | null = null;
 
+
   if (encodedSession) {
     try {
       user = JSON.parse(atob(encodedSession)) as SessionUser;
