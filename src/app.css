@@ -1062,26 +1062,22 @@ button {
 }
 .drawer-backdrop {
   position: fixed;
-  inset: 0;
-  background: #17202a66;
+  inset: 66px 0 0;
+  background: #17202a4d;
   z-index: 30;
 }
 .detail-drawer {
   position: fixed;
-  inset: 50% auto auto 50%;
-  transform: translate(-50%, -50%);
-  width: min(720px, calc(100vw - 32px));
-  max-height: calc(100vh - 48px);
+  right: 0;
+  top: 66px;
+  bottom: 0;
+  width: 420px;
   background: #fff;
   z-index: 31;
-  border-radius: 10px;
-  box-shadow: 0 24px 70px #17202a33;
+  box-shadow: -10px 0 35px #17202a1c;
   display: flex;
   flex-direction: column;
-  animation: modal-in 0.2s ease-out;
-}
-.detail-drawer {
-  overflow-y: auto;
+  animation: slide 0.2s ease-out;
 }
 .drawer-head {
   padding: 22px;
@@ -1238,12 +1234,6 @@ button {
   padding: 2px;
   margin-left: 10px;
 }
-@keyframes modal-in {
-  from {
-    transform: translate(-50%, calc(-50% + 12px));
-    opacity: 0;
-  }
-}
 @keyframes slide {
   from {
     transform: translateX(40px);
@@ -1339,6 +1329,9 @@ button {
   .my-deliveries {
     overflow: auto;
   }
+  .delivery-table {
+    min-width: 700px;
+  }
   .page-title {
     gap: 15px;
   }
@@ -1346,9 +1339,8 @@ button {
     display: none;
   }
   .detail-drawer {
-    width: calc(100vw - 20px);
-    max-height: calc(100vh - 20px);
-    top: 50%;
+    width: 100%;
+    top: 66px;
   }
   .hours-list > div {
     grid-template-columns: 36px 1fr 90px 18px 90px;

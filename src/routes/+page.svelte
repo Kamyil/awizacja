@@ -21,6 +21,7 @@
   let query = $state('');
   let selected: Delivery | null = $state(null);
   let selectedOrderDocument: Delivery | null = $state(null);
+  let editOpen = $state(false);
   let resolvingConflict = $state(false);
   let orderOpen = $state(false);
   let addOpen = $state(false);
@@ -904,8 +905,8 @@
 </div>
 
 {#if selected}
-  <div class="drawer-backdrop" role="presentation" onclick={() => selected=null}></div>
-  <aside class="detail-drawer">
+  <Dialog.Root open={true}>
+    <Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-[720px]">
     <div class="drawer-head"><div><Badge variant="outline">{selected.dock}</Badge><h2>{selected.id}</h2><p>{selected.supplier}</p></div><button onclick={() => selected=null}><X size={20}/></button></div>
     <div class="status-banner {selected.hasConflict ? 'red' : selected.color}"><span><i></i>{selected.hasConflict ? 'Konflikt' : selected.status}</span><small>{days[selected.day??0].date} · {selected.start}:00–{(selected.start??0)+selected.duration}:00</small></div>
     {#if selected.hasConflict}
@@ -951,7 +952,8 @@
       </div>
     </div>
     <div class="drawer-footer"><Button variant="outline"><ExternalLink size={15}/>Dokument źródłowy</Button><Button onclick={() => advanceStatus(selected!)}>{#if selected.status==='W trakcie rozładunku'}<LogOut size={16}/>{:else}<Check size={16}/>{/if} {selected.status==='W trakcie rozładunku'?'Zakończ rozładunek':'Potwierdź podjazd auta'}</Button></div>
-  </aside>
+    </Dialog.Content>
+  </Dialog.Root>
 {/if}
 
 <Dialog.Root bind:open={addOpen}>
