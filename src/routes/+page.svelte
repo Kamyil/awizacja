@@ -266,6 +266,11 @@
     toast = `${item.id} przeniesiono do ${dock}`;
     setTimeout(() => toast = '', 3200);
   }
+  function openDeliveryEditor(item:Delivery) {
+    selected = item;
+    resolvingConflict = false;
+    editOpen = true;
+  }
 
   function resolveSelectedConflict() {
     if (!selected?.conflictWith) return;
@@ -680,7 +685,7 @@
                     {/if}
                     {#each deliveries.filter(d => d.day===dayIndex && d.start===hour && visibleDocks[docks.indexOf(d.dock ?? '')]) as item}
                       {#if role === 'admin'}
-                        <button draggable="true" class={`event week-event ${dockClass(item.dock)} ${item.color}`} class:split-docks={sharesTimeWithAnotherDock(item)} class:conflict={item.hasConflict} class:dragging={draggedDelivery?.id === item.id} class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} ondragstart={(e) => startDeliveryDrag(e, item)} ondragend={finishDeliveryDrag} onclick={() => {selected=item;resolvingConflict=false}}>
+                        <button draggable="true" class={`event week-event ${dockClass(item.dock)} ${item.color}`} class:split-docks={sharesTimeWithAnotherDock(item)} class:conflict={item.hasConflict} class:dragging={draggedDelivery?.id === item.id} class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} ondragstart={(e) => startDeliveryDrag(e, item)} ondragend={finishDeliveryDrag} onclick={() => openDeliveryEditor(item)}>
                           <span class="event-time">{formatTime(item.start??hour)} · <Badge class={`dock-badge ${dockClass(item.dock)}`}>{item.dock}</Badge></span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.conflictWith ? `Koliduje z ${item.conflictWith}` : item.plate || 'Brak rejestracji'}</small>{#if item.hasConflict}<CircleAlert size={14} class="alert-icon"/>{/if}
                         </button>
                       {:else}
@@ -706,7 +711,7 @@
                     {/if}
                     {#each deliveries.filter(d => d.day===0 && d.dock===dock && d.start===hour) as item}
                       {#if role === 'admin'}
-                        <button draggable="true" class={`event ${item.color}`} class:conflict={item.hasConflict} class:dragging={draggedDelivery?.id === item.id} class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} ondragstart={(e) => startDeliveryDrag(e, item)} ondragend={finishDeliveryDrag} onclick={() => {selected=item;resolvingConflict=false}}>
+                        <button draggable="true" class={`event ${item.color}`} class:conflict={item.hasConflict} class:dragging={draggedDelivery?.id === item.id} class:conflict-left={item.conflictSide==='left'} class:conflict-right={item.conflictSide==='right'} style={`height:${Math.max(30,item.duration*68-4)}px`} ondragstart={(e) => startDeliveryDrag(e, item)} ondragend={finishDeliveryDrag} onclick={() => openDeliveryEditor(item)}>
                           <span class="event-time">{formatTime(item.start??hour)} · <Badge class={`dock-badge ${dockClass(item.dock)}`}>{item.dock}</Badge></span><strong>{item.id}</strong><span>{item.supplier}</span><small>{item.conflictWith ? `Koliduje z ${item.conflictWith}` : item.plate}</small>{#if item.hasConflict}<CircleAlert size={14} class="alert-icon"/>{/if}
                         </button>
                       {:else}
@@ -724,7 +729,7 @@
                 <div class:other={date.other} class:closed={index===3 || index===4} class:today={date.n===2 && !date.other} class="month-cell">
                   <div class="month-number"><span>{date.n}</span>{#if date.n===1 && !date.other}<small>ŚWIĘTO</small>{/if}{#if date.n===2 && !date.other}<b>DZIŚ</b>{/if}</div>
                   {#each deliveries.filter(d => (d.day??-1)+28===date.day+28).slice(0,3) as item}
-                    {#if role === 'admin'}<button class={`month-event ${dockClass(item.dock)}`} onclick={() => {selected=item;resolvingConflict=false}}><i></i><strong>{formatTime(item.start??0)}</strong><span>{item.id}</span><small>{item.dock}</small></button>{:else}<div class={`month-event private-event ${dockClass(item.dock)}`}><i></i><strong>{formatTime(item.start??0)}</strong><span>Termin zajęty</span></div>{/if}
+                    {#if role === 'admin'}<button class={`month-event ${dockClass(item.dock)}`} onclick={() => openDeliveryEditor(item)}><i></i><strong>{formatTime(item.start??0)}</strong><span>{item.id}</span><small>{item.dock}</small></button>{:else}<div class={`month-event private-event ${dockClass(item.dock)}`}><i></i><strong>{formatTime(item.start??0)}</strong><span>Termin zajęty</span></div>{/if}
                   {/each}
                   {#if index===3}<span class="closed-label">Magazyn zamknięty</span>{/if}
                 </div>
@@ -905,7 +910,7 @@
 </div>
 
 {#if selected}
-  <Dialog.Root open={true}>
+  <Dialog.Root bind:open={editOpen}>
     <Dialog.Content class="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-[720px]">
     <div class="min-h-0 flex-1 overflow-y-auto">
     <div class="drawer-head"><div><Badge variant="outline">{selected.dock}</Badge><h2>{selected.id}</h2><p>{selected.supplier}</p></div></div>
