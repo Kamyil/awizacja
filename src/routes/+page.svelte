@@ -99,16 +99,16 @@
     visibleDocks = branches.find(branch => branch.id === branchId)?.docks.map(() => true) ?? [];
   }
   let customFields = $state([
-    {name:'Pole A',label:'Numer partii',value:'NS-0425',enabled:true},
-    {name:'Pole B',label:'Sposób rozładunku',value:'Rozładunek bokiem',enabled:true},
-    {name:'Pole C',label:'Osoba kontaktowa',value:'+48 600 230 411',enabled:true},
-    {name:'Pole D',label:'Uwagi dla magazynu',value:'Wymagany wózek 5 t',enabled:true},
-    {name:'Pole E',label:'Numer plomby',value:'PL-884190',enabled:true},
-    {name:'Pole F',label:'Temperatura ładunku',value:'18°C',enabled:true},
-    {name:'Pole G',label:'Kraj pochodzenia',value:'Niemcy',enabled:true},
-    {name:'Pole H',label:'Numer partii dostawcy',value:'HU-2025-118',enabled:true},
-    {name:'Pole I',label:'Rodzaj opakowania',value:'Paleta EUR',enabled:true},
-    {name:'Pole J',label:'Wymagane wyposażenie',value:'Rampa mobilna',enabled:true}
+    {name:'Pole A',label:'Numer partii',value:'NS-0425',enabled:true,required:false},
+    {name:'Pole B',label:'Sposób rozładunku',value:'Rozładunek bokiem',enabled:true,required:false},
+    {name:'Pole C',label:'Osoba kontaktowa',value:'+48 600 230 411',enabled:true,required:false},
+    {name:'Pole D',label:'Uwagi dla magazynu',value:'Wymagany wózek 5 t',enabled:true,required:false},
+    {name:'Pole E',label:'Numer plomby',value:'PL-884190',enabled:true,required:false},
+    {name:'Pole F',label:'Temperatura ładunku',value:'18°C',enabled:true,required:false},
+    {name:'Pole G',label:'Kraj pochodzenia',value:'Niemcy',enabled:true,required:false},
+    {name:'Pole H',label:'Numer partii dostawcy',value:'HU-2025-118',enabled:true,required:false},
+    {name:'Pole I',label:'Rodzaj opakowania',value:'Paleta EUR',enabled:true,required:false},
+    {name:'Pole J',label:'Wymagane wyposażenie',value:'Rampa mobilna',enabled:true,required:false}
   ]);
   let notifications = $state([
     {title:'Konflikt terminów',description:'Gdy dwie dostawy zajmują ten sam dok.',enabled:true},
@@ -261,7 +261,24 @@
     setTimeout(() => toast = '', 3200);
   }
 
+  function requiredCustomFieldsMissing() {
+    return customFields.filter(field =>
+      field.enabled && field.required && !newAwizationFields[field.name]?.trim()
+    );
+  }
+
+  function requiredExistingCustomFieldsMissing() {
+    return customFields.filter(field => field.enabled && field.required && !field.value.trim());
+  }
+
   function createAwization() {
+    const missingFields = requiredCustomFieldsMissing();
+    if (missingFields.length) {
+      toast = `Uzupełnij wymagane pola: ${missingFields.map(field => field.label).join(', ')}`;
+      setTimeout(() => toast = '', 3200);
+      return;
+    }
+
     const [hour, minute] = newTime.split(':').map(Number);
     const start = hour + minute / 60;
     const day = {
@@ -394,6 +411,13 @@
     setTimeout(() => toast = '', 3200);
   }
   function advanceStatus(item:Delivery) {
+    const missingFields = requiredExistingCustomFieldsMissing();
+    if (missingFields.length) {
+      toast = `Uzupełnij wymagane pola: ${missingFields.map(field => field.label).join(', ')}`;
+      setTimeout(() => toast = '', 3200);
+      return;
+    }
+
     if (item.status === 'W trakcie rozładunku') item.status = 'Zakończony';
     else item.status = 'W trakcie rozładunku';
     item.color = item.status === 'Zakończony' ? 'slate' : 'green';
@@ -438,7 +462,8 @@
       name:`Pole ${suffix}`,
       label:`Dodatkowa informacja ${customFields.length + 1}`,
       value:'Brak danych',
-      enabled:true
+      enabled:true,
+      required:false
     });
   }
   function addDock() {
@@ -762,6 +787,10 @@
                   <div class:disabled={!field.enabled}>
                     <span class="field-code">{field.name.slice(-1)}</span>
                     <div><strong>{field.name}</strong><Input bind:value={field.label}/></div>
+                    <div class="field-required-toggle">
+                      <span>Wymagane</span>
+                      <label class="switch"><input type="checkbox" bind:checked={field.required} aria-label={`Wymagalność ${field.name}`}/><span></span></label>
+                    </div>
                     <label class="switch"><input type="checkbox" bind:checked={field.enabled} aria-label={`Aktywność ${field.name}`}/><span></span></label>
                     <button aria-label={`Usuń ${field.name}`} onclick={() => customFields.splice(customFields.indexOf(field),1)}><Trash2 size={16}/></button>
                   </div>
@@ -832,8 +861,14 @@
       <div class="extra-fields">
         {#each customFields.filter(field => field.enabled) as field}
           <label>
-            <span>{field.label}</span>
-            <Input bind:value={field.value} aria-label={field.label}/>
+            <span>{field.label}{#if field.required}<span class="field-required-marker" aria-hidden="true">*</span>{/if}</span>
+            <Input
+              bind:value={field.value}
+              aria-label={field.label}
+              required={field.required}
+              aria-required={field.required}
+              aria-invalid={field.required && !field.value.trim()}
+            />
           </label>
         {/each}
       </div>
@@ -928,8 +963,14 @@
         <div class="notice-detail-fields">
           {#each customFields.filter(field => field.enabled) as field}
             <label>
-              {field.label}
-              <Input bind:value={newAwizationFields[field.name]} placeholder={`Wpisz: ${field.label.toLowerCase()}`}/>
+              {field.label}{#if field.required}<span class="field-required-marker" aria-hidden="true">*</span>{/if}
+              <Input
+                bind:value={newAwizationFields[field.name]}
+                placeholder={`Wpisz: ${field.label.toLowerCase()}`}
+                required={field.required}
+                aria-required={field.required}
+                aria-invalid={field.required && !newAwizationFields[field.name]?.trim()}
+              />
             </label>
           {/each}
         </div>
@@ -985,4 +1026,4 @@
   </Dialog.Content>
 </Dialog.Root>
 
-{#if toast}<div class="toast"><Check size={18}/><span>{toast}</span><button onclick={() => toast=''}><X size={15}/></button></div>{/if}
+{#if toast}<div class="toast" class:error={toast.startsWith('Uzupełnij wymagane pola:')}>{#if toast.startsWith('Uzupełnij wymagane pola:')}<CircleAlert size={18}/>{:else}<Check size={18}/>{/if}<span>{toast}</span><button onclick={() => toast=''}><X size={15}/></button></div>{/if}

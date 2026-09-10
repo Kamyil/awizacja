@@ -1174,6 +1174,9 @@ button {
   font-size: 12px;
   animation: up 0.2s ease-out;
 }
+.toast.error {
+  background: #b42318;
+}
 .toast button {
   border: 0;
   background: transparent;
@@ -1552,6 +1555,19 @@ button {
   height: 32px;
   max-width: 340px;
 }
+.field-required-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.field-required-toggle > span {
+  color: #526268;
+  font-size: 10px;
+  font-weight: 600;
+}
+.field-required-toggle .switch {
+  display: flex;
+}
 .preference-list button,
 .user-list button {
   border: 0;
@@ -1908,6 +1924,10 @@ button {
 }
 .notice-detail-fields input {
   height: 34px;
+}
+.field-required-marker {
+  color: #b42318;
+  font-weight: 700;
 }
 .conflict-notice > span {
   flex: 1;
