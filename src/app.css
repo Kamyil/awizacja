@@ -540,7 +540,7 @@ button {
   border: 0;
   text-align: left;
   border-left: 3px solid #3e75c9;
-  border-radius: 5px;
+  border-radius: 0px;
   background: #eaf1fb;
   color: #254c88;
   padding: 6px 7px;
